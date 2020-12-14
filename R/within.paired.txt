@@ -1,0 +1,125 @@
+WithinPaired <- function( w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, normoverride, ggroups, grps, output ){
+  #ggroups <- w.imp$GROUPING
+  #ggroups <- unique(ggroups)
+  cat("GGROUPS: ", ggroups, nl)
+  cat("GRPS: ", grps, nl)
+  ggroups <- as.vector(ggroups)
+  cat("GGROUPS: ", ggroups, nl)
+  cat("GRPS: ", grps, nl)
+  
+  within.p.vals <- list()
+  within.p.vals[["#"]] <- "Within group"
+  
+  
+  #print("DB sent to WithinPaired function: ")
+  #print(summary(w.imp))
+  for(j in c(1:grps)){
+    v <- w.imp[ which( w.imp$GROUPING == ggroups[j] ),] #use imputed data for p-values
+    #print(v)
+    
+    if(!is.na(speccomp1) & !is.na(speccomp2)){
+      special <- paste0(speccomp1, speccomp2)
+      #print(special)
+      if(i == special){
+        u3 <- v[which(v$VISITNUMBER == speccomp1 | v$VISITNUMBER == speccomp2),]
+        #print(summary(u3))
+        #make sure data is paired
+        first_set <- u3[u3$VISITNUMBER == speccomp1 & !is.na(u3$OUTCOME), c("SUBJECTNUM") ]
+        second_set <- u3[u3$VISITNUMBER == speccomp2 & !is.na(u3$OUTCOME), c("SUBJECTNUM") ]
+        u4 <- u3[u3$SUBJECTNUM %in% first_set,]
+        u5 <- u4[u4$SUBJECTNUM %in% second_set,]
+        #return(u5)
+        #print("Special Set:")
+        #print(summary(u5))
+        
+      } else {
+        u3 <- v[which(v$VISITNUMBER == baselinevisit | v$VISITNUMBER == i),]
+        #print(summary(u3))
+        #make sure data is paired
+        first_set <- u3[u3$VISITNUMBER == baselinevisit & !is.na(u3$OUTCOME), c("SUBJECTNUM") ]
+        second_set <- u3[u3$VISITNUMBER == i & !is.na(u3$OUTCOME), c("SUBJECTNUM") ]
+        u4 <- u3[u3$SUBJECTNUM %in% first_set,]
+        u5 <- u4[u4$SUBJECTNUM %in% second_set,]
+        #return(u5)
+        #print("Regular Set1 (U5):")
+        #print(summary(u5))
+        
+      }
+    } 
+    else {
+      u3 <- v[which(v$VISITNUMBER == baselinevisit | v$VISITNUMBER == i),]
+      #(summary(u3))
+      #make sure data is paired
+      first_set <- u3[u3$VISITNUMBER == baselinevisit & !is.na(u3$OUTCOME), c("SUBJECTNUM") ]
+      second_set <- u3[u3$VISITNUMBER == i & !is.na(u3$OUTCOME), c("SUBJECTNUM") ]
+      u4 <- u3[u3$SUBJECTNUM %in% first_set,]
+      u5 <- u4[u4$SUBJECTNUM %in% second_set,]
+      #return(u5)
+      #print("Regular Set2 (U5):")
+      #print(summary(u5))
+    }
+    
+    
+    #summary(u5)
+    n.outcomes <- unique(u5$OUTCOME)
+    n.outcomes <- n.outcomes[!is.nan(n.outcomes) & !is.na(n.outcomes) & !is.infinite(n.outcomes)]
+    
+    
+    if(isTRUE(normoverride)){
+      if(length(n.outcomes) > 2){
+        result <- t.test(OUTCOME ~ VISITNUMBER, data = u5, paired = TRUE, conf.level = 0.95, na.rm = TRUE)
+        p.val <- n_decimals(result$p.value, 3)
+      } else {
+        p.val <- n_decimals(999, 3)
+      }
+      
+      
+    }
+    else{
+      if(length(n.outcomes) > 2){
+        s.test3 <- shapiro.test(u5$OUTCOME)$p.value
+      } else {
+        s.test3 <- 0.0001
+      }
+      
+      #s.test3 <- shapiro.test(u5$OUTCOME)$p.value
+      cat("Within Shapiro Test Group ", ggroups[j], ": ", s.test3, nl)
+      
+      if( s.test3 < 0.01){
+        u5$OUTCOME1 <- log10(u5$OUTCOME + 1 - min(u5$OUTCOME))
+        if(length(n.outcomes) > 2){
+          s.test4 <- try(shapiro.test(u5$OUTCOME1)$p.value)
+        } else {
+          s.test4 <- 0.0001
+        }
+        #s.test4 <- try(shapiro.test(u5$OUTCOME1)$p.value)
+        
+        if( s.test4 < 0.01 ){
+          result <- wilcox.test(OUTCOME ~ VISITNUMBER, data = u5, paired = TRUE, conf.level = 0.95, na.rm = TRUE)
+          p.val <- n_decimals(result$p.value, 3)
+          p.val <- paste0(p.val," (w)")
+        } else {
+          result <- t.test(OUTCOME1 ~ VISITNUMBER, data = u5, paired = TRUE, conf.level = 0.95, na.rm = TRUE)
+          p.val <- n_decimals(result$p.value, 3)
+        }
+        
+      }
+      else  {
+        result <- t.test(OUTCOME ~ VISITNUMBER, data = u5, paired = TRUE, conf.level = 0.95, na.rm = TRUE)
+        p.val <- n_decimals(result$p.value, 3)
+      }
+    }
+    
+    #big.p.val[ggroups[j]] <- p.val
+    within.p.vals[[ggroups[j]]] <- p.val
+  }
+  
+  
+  
+  #big.p.val[grps+1] <- " "
+  within.p.vals[["p.val"]] <- " "
+  #output[nrow(output) + 1,] = big.p.val
+  output[nrow(output) + 1,] = within.p.vals
+  
+  return(output)
+}

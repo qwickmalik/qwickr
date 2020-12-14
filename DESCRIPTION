@@ -1,0 +1,18 @@
+Package: qwickr
+Type: Package
+Title: A Quick and Easy Way to Analyze and Report Clinical Trial Data including Pharmacokinetics Studies
+Version: 0.1.3
+Date: 2020-12-14
+Author: Abdul Malik Sulley 
+Maintainer: Abdul Malik Sulley <asulley@uwo.ca>
+Description: A Quick and Easy Way to Summarize and Report Clinical Trial Data including Pharmacokinetic studies.
+Imports: stats (>= 3.6), utils (>= 3.6), rtf (>= 0.4), pwr (>= 1.3), powerMediation (>= 0.2.9), dplyr (>= 0.8), magrittr (>= 1.4), purrrlyr (>= 0.0.5), zoo (>= 1.8), crayon (>= 1.3.4), tictoc (>= 1.0), gee (>= 4.13-20), readxl (>= 1.3.1), pastecs (>= 1.3.21), mice (>= 3.8), car (>= 3.0-6), reshape2 (>= 1.4.3), nlme (>= 3.1-144), lme4 (>= 1.1-21), emmeans (>= 1.4.4), ggplot2 (>= 3.2.1), PMCMRplus (>= 1.4.4), AER (>= 1.2-9), stringr (>= 1.4.0), ggpubr (>= 0.2.5), arsenal (>= 3.4), aod (>= 1.3.1)
+License: LGPL-3
+Depends: R (>= 3.6)
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.1.0
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
