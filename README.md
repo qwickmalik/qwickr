@@ -5,7 +5,7 @@ A quick and easy way to summarize clinical trial and other similar data, includi
 ## Installation
 `qwickr` is still in development and therefore is not on [CRAN](https://CRAN.R-project.org) yet. However, users may install the development version using 
 ```r
-remotes::install_github("qwickmalik/qwickr")
+remotes::install_github("qwickmalik/qwickr/install/qwickr_0.1.3.zip")
 ```
 ## Use
 Load the package using
