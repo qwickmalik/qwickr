@@ -7,6 +7,8 @@ A quick and easy way to summarize clinical trial and other similar data, includi
 ```r
 remotes::install_github("qwickmalik/qwickr")
 ```
+Alternatively, the zip file can be downloaded from the "qwickmalik/qwickr/install" folder
+
 ## Use
 Load the package using
 ```r
