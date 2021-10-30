@@ -16,7 +16,7 @@
 #' @note Dataset needs to be ordered by subject ID and time, and any other characteristics. This ensures that only the previous measurement is used for imputation.
 #' 
 #' @seealso zoo::na.locf
-#' @importFrom magrittr %>%
+#' @importFrom stringr %>%
 #' @examples 
 #' mybeaver <- beaver1
 #' #order by day and time

@@ -16,7 +16,7 @@
 #' q.data <- cbind.data.frame(id, baseline_values, outcome, visit)
 #' q.desc_stats(q.data, groupvar="visit", outcomevar="outcome", timevar="visit")
 #' @import stats
-#' @importFrom magrittr "%>%"
+#' @importFrom stringr "%>%"
 #' @export
 #' 
 #' 

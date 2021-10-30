@@ -4,17 +4,18 @@
 \alias{qwickr.cont}
 \title{Summarize continuous data and test hypotheses}
 \usage{
-qwickr.cont(db, resultfield="", groupvar="", visitnumbers=c(), 
+qwickr.cont(db, outcomevar="", groupvar="", visitnumbers=c(), 
 baselinevisit="", speccomp1=NA, speccomp2=NA, lloq=NA, 
 mimp="cart", locf=FALSE,  noimp=TRUE, runpairwise=FALSE, adj=FALSE,
 within.group="both", covs="FFFFTF", assume.normal.dist=FALSE, 
 useranks=FALSE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
-dbexport="", design="parallel", suffix="")
+dbexport="", design="parallel", filesuffix="", 
+exportfile=c(".doc"), exportpath="")
 }
 \arguments{
 \item{db}{Data frame}
 
-\item{resultfield}{Name of outcome variable \code{(string)}}
+\item{outcomevar}{Name of outcome variable \code{(string)}}
 
 \item{groupvar}{Name of grouping variable \code{(string)}}
 
@@ -54,12 +55,16 @@ dbexport="", design="parallel", suffix="")
 
 \item{dbexport}{specify which dataset to be exported. Options: c("noimp", "locf", "mimp", "")}
 
-\item{design}{specify the study design. Options: c("parallel", "crossover", "pk"). pk = pharmacokinetics}
+\item{design}{specify the study design. Options: c("parallel", "crossover").}
 
-\item{suffix}{suffix to be included in the file name for the exported output file}
+\item{filesuffix}{filesuffix to be included in the file name for the exported output file}
+
+\item{exportfile}{Export the output to file? Options: \code{c(".csv", ".doc")}. See \code{q.write.to.word, stats::write.csv }}
+
+\item{exportpath}{Path relative to the working directory where exported files will be saved e.g. "OUTPUT" Do not begin or end with a backslash. If left empty, file will be exported to the working directory.}
 }
 \value{
-Returns a data frame of means, standard deviations, medians, minimum-maximum ranges for each study arm and an associated p-value for each study time point in a parallel or crossover, repeated measures or non-repeated measures design, or a pharmacokinetics study.
+Returns a list containing data frame of means, standard deviations, medians, minimum-maximum ranges for each study arm and an associated p-value for each study time point in a parallel or crossover, repeated measures or non-repeated measures design.
 }
 \description{
 Analyze continuous data and test hypotheses
@@ -68,17 +73,13 @@ Analyze continuous data and test hypotheses
 Analyze continuous data and test hypotheses
 }
 \examples{
-SUBJECTNUM <- rep(1:6, each=4)
-OUTCOME <- c(rnorm(24,25,6))
-VISITNUMBER <- as.factor(c(rep(1:4,6)))
-GROUPING <- rep(c(rep("A",4), rep("B",4)), 3)
-q.data <- cbind.data.frame(SUBJECTNUM, OUTCOME, VISITNUMBER, GROUPING)
-qwickr.cont(db=q.data, resultfield="OUTCOME", groupvar="GROUPING", 
+q.data <- rmdata
+qwickr.cont(db=q.data, outcomevar="BIOMARKER", groupvar="GROUPING", 
 baselinevisit="1", visitnumbers=c(2:4), 
 mimp="", locf=TRUE,  noimp=TRUE,
 runpairwise=FALSE, adj=FALSE, within.group="t-test", covs="FFFFTF", 
 assume.normal.dist=FALSE, useranks=TRUE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
-dbexport="", suffix="mysuffix", design="parallel")
+dbexport="", filesuffix="mysuffix", design="parallel", exportfile=c(".doc"), exportpath="")
 }
 \author{
 Abdul Malik Sulley

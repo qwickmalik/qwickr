@@ -29,7 +29,7 @@ qwickr.cat(x, outcomevar="", groupvar="", timevar="", specgroups=NULL,
 
 \item{exportfile}{Export the output to file? Options: \code{c(".csv", ".doc")}. See \code{q.write.to.word, stats::write.csv }}
 
-\item{exportpath}{Path relative to the working directory where exported files will be saved e.g. "/OUTPUT". Always begin with a backslash and end without one. If left empty, file will be exported to the working directory.}
+\item{exportpath}{Path relative to the working directory where exported files will be saved e.g. "OUTPUT" Do not begin or end with a backslash. If left empty, file will be exported to the working directory.}
 }
 \value{
 Returns a data frame of counts and percentages for each study arm and an associated p-value for each study time point in a repeated measures design.

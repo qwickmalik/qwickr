@@ -27,7 +27,11 @@ q.write.to.word <- function(q.payload, exportpath="", docname="", colwidths=c())
   }
   tic()
   # exp♥rt path
-  if(!exportpath == ""){ exportpath <- paste0(getwd(), "/", exportpath, "/") } else { exportpath <- paste0(getwd(), "/") }
+  if(exportpath != ""){ 
+      exportpath <- paste0(getwd(), "/", exportpath, "/") 
+    } else { 
+      exportpath <- paste0(getwd(), "/") 
+      }
   
   if(length(colwidths) == 3){
     fixedwidth <- T
@@ -57,12 +61,16 @@ q.write.to.word <- function(q.payload, exportpath="", docname="", colwidths=c())
     } else if (class(mypayload[[each_item]]) == "data.frame") {
       mytable <- mypayload[[each_item]]
       colnumb <- ncol(mytable)
-      othercols <- rep(othercol, colnumb-2)
-      mycolwidth <- c(firstcol, othercols, lastcol)
+      if(colnumb > 2 & isTRUE(fixedwidth)){
+        othercols <- rep(othercol, colnumb-2)
+        mycolwidth <- c(firstcol, othercols, lastcol)
+      }
+      
       if(isTRUE(fixedwidth)){
         #print(mycolwidth)
         #addTable(myoutput.doc, mytable, col.widths=mycolwidth, col.justify="C", font.size=8)
-        rtf::addTable(myoutput.doc, mytable, col.widths=mycolwidth, col.justify="C", font.size=8)
+        rtf::addTable(myoutput.doc, mytable, col.widths=mycolwidth,
+                      col.justify="C", font.size=8)
       } else {
         mytable <- mypayload[[each_item]]
         rtf::addTable(myoutput.doc, mytable, col.justify="C", font.size=8)
@@ -70,6 +78,7 @@ q.write.to.word <- function(q.payload, exportpath="", docname="", colwidths=c())
     }
     
   }
+  cat(green("Export Path: " %+% exportpath))
   rtf::done(myoutput.doc)
   done <- toc()
   elapsed_time <- round(done$toc - done$tic, 2)
