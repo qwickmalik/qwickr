@@ -35,7 +35,7 @@ BIOMARKER
 
 rmdata <- cbind.data.frame(SUBJECTNUM, GROUPING, VISITNUMBER, BIOMARKER)
 usethis::use_data(rmdata, overwrite = TRUE)
-file.create("R/rmdata.R")
+# file.create("R/rmdata.R")
 sinew::makeOxygen(rmdata, add_fields = "source")
 
 
@@ -59,6 +59,6 @@ hist(mysamp, 30)
 
 rmdata$BIOMARKER <- mysamp
 usethis::use_data(rmdata, overwrite = TRUE)
-file.create("R/rmdata.R")
+# file.create("R/rmdata.R")
 
 
