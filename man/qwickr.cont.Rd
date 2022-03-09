@@ -4,20 +4,25 @@
 \alias{qwickr.cont}
 \title{Summarize continuous data and test hypotheses}
 \usage{
-qwickr.cont(db, outcomevar="", groupvar="", visitnumbers=c(), 
-baselinevisit="", speccomp1=NA, speccomp2=NA, lloq=NA, 
-mimp="cart", locf=FALSE,  noimp=TRUE, runpairwise=FALSE, adj=FALSE,
-within.group="both", covs="FFFFTF", assume.normal.dist=FALSE, 
-useranks=FALSE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
-dbexport="", design="parallel", filesuffix="", 
-exportfile=c(".doc"), exportpath="")
+qwickr.cont(db, design="parallel", outcomevar="", idvar="", groupvar="", 
+timevar="", visitnumbers=c(), baselinevisit="", speccomp1=NA, speccomp2=NA, 
+lloq=NA, mimp="cart", locf=FALSE,  noimp=TRUE, runpairwise=FALSE, adj=FALSE,
+within.group="t-test", covs="FFFFTF", assume.normal.dist=FALSE, 
+useranks=FALSE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL,
+exportfile=c(".doc"), exportpath="", dbexport="", filesuffix="")
 }
 \arguments{
 \item{db}{Data frame}
 
+\item{design}{specify the study design. Options: c("parallel", "crossover").}
+
 \item{outcomevar}{Name of outcome variable \code{(string)}}
 
+\item{idvar}{Name of the unique subject/particpant ID variable \code{(string)}}
+
 \item{groupvar}{Name of grouping variable \code{(string)}}
+
+\item{timevar}{Name of the time variable \code{(string)}}
 
 \item{visitnumbers}{A vector of visit numbers to be included in analysis, excluding reference visit (baseline/screening)}
 
@@ -53,15 +58,13 @@ exportfile=c(".doc"), exportpath="")
 
 \item{glmgeefamily}{specify which family to use e.g. for logistic regression, use \code{"binomial"} and set \code{useglm=T}; for Poisson, use \code{"poisson"}}
 
-\item{dbexport}{specify which dataset to be exported. Options: c("noimp", "locf", "mimp", "")}
-
-\item{design}{specify the study design. Options: c("parallel", "crossover").}
-
-\item{filesuffix}{filesuffix to be included in the file name for the exported output file}
-
 \item{exportfile}{Export the output to file? Options: \code{c(".csv", ".doc")}. See \code{q.write.to.word, stats::write.csv }}
 
 \item{exportpath}{Path relative to the working directory where exported files will be saved e.g. "OUTPUT" Do not begin or end with a backslash. If left empty, file will be exported to the working directory.}
+
+\item{dbexport}{specify which dataset to be exported. Options: c("noimp", "locf", "mimp", "")}
+
+\item{filesuffix}{filesuffix to be included in the file name for the exported output file}
 }
 \value{
 Returns a list containing data frame of means, standard deviations, medians, minimum-maximum ranges for each study arm and an associated p-value for each study time point in a parallel or crossover, repeated measures or non-repeated measures design.
@@ -74,12 +77,13 @@ Analyze continuous data and test hypotheses
 }
 \examples{
 q.data <- rmdata
-qwickr.cont(db=q.data, outcomevar="BIOMARKER", groupvar="GROUPING", 
-baselinevisit="1", visitnumbers=c(2:4), 
+qwickr.cont(db=q.data, design="parallel", outcomevar="BIOMARKER", idvar="SUBJECTNUM",
+groupvar="GROUPING", timevar="VISITNUMBER", baselinevisit="1", visitnumbers=c(2:4), 
 mimp="", locf=TRUE,  noimp=TRUE,
 runpairwise=FALSE, adj=FALSE, within.group="t-test", covs="FFFFTF", 
-assume.normal.dist=FALSE, useranks=TRUE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
-dbexport="", filesuffix="mysuffix", design="parallel", exportfile=c(".doc"), exportpath="")
+assume.normal.dist=FALSE, 
+useranks=TRUE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
+exportfile=c(".doc"), exportpath="", dbexport="", filesuffix="mysuffix")
 }
 \author{
 Abdul Malik Sulley

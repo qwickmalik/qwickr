@@ -7,10 +7,10 @@
 \format{
 A data frame with 24 rows and 4 variables:
 \describe{
-  \item{\code{SUBJECTNUM}}{integer Unique subject ID}
-  \item{\code{GROUPING}}{character Study group/arm/treatment/IP}
-  \item{\code{VISITNUMBER}}{integer COLUMN_DESCRIPTION}
-  \item{\code{BIOMARKER}}{double Biomarker used to assess study endpoints} 
+  \item{\code{SUBJECTNUM}}{integer: Unique subject ID}
+  \item{\code{GROUPING}}{character: Study group/arm/treatment/IP}
+  \item{\code{VISITNUMBER}}{integer: Visit number}
+  \item{\code{BIOMARKER}}{double: Biomarker used to assess study endpoints} 
 }
 }
 \usage{
