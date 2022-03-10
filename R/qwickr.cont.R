@@ -1,15 +1,18 @@
 #' @title Summarize continuous data and test hypotheses
 #' @aliases qwickr.cont
 #' @description Analyze continuous data and test hypotheses
-#' @usage qwickr.cont(db, resultfield="", groupvar="", visitnumbers=c(), 
-#' baselinevisit="", speccomp1=NA, speccomp2=NA, lloq=NA, 
-#' mimp="cart", locf=FALSE,  noimp=TRUE, runpairwise=FALSE, adj=FALSE,
-#' within.group="both", covs="FFFFTF", assume.normal.dist=FALSE, 
-#' useranks=FALSE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
-#' dbexport="", design="parallel", suffix="")
+#' @usage qwickr.cont(db, design="parallel", outcomevar="", idvar="", groupvar="", 
+#' timevar="", visitnumbers=c(), baselinevisit="", speccomp1=NA, speccomp2=NA, 
+#' lloq=NA, mimp="cart", locf=FALSE,  noimp=TRUE, runpairwise=FALSE, adj=FALSE,
+#' within.group="t-test", covs="FFFFTF", assume.normal.dist=FALSE, 
+#' useranks=FALSE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL,
+#' exportfile=c(".doc"), exportpath="", dbexport="", filesuffix="")
 #' @param db Data frame
-#' @param resultfield Name of outcome variable \code{(string)}
+#' @param design specify the study design. Options: c("parallel", "crossover"). 
+#' @param idvar Name of the unique subject/particpant ID variable \code{(string)}
+#' @param outcomevar Name of outcome variable \code{(string)}
 #' @param groupvar Name of grouping variable \code{(string)}
+#' @param timevar Name of the time variable \code{(string)}
 #' @param visitnumbers A vector of visit numbers to be included in analysis, excluding reference visit (baseline/screening)
 #' @param baselinevisit Reference visit number (baseline/screening)
 #' @param speccomp1 Special visit numbers to compare in addition to comparison to baseline. must be a subset of visitnumbers. speccomp1 is the baseline to which speccomp2 is compared. e.g. to compare visits 3 and 4, speccomp1=3, speccomp2=4
@@ -27,44 +30,45 @@
 #' @param useglm analyze raw data using Poisson distribution OR perform logistic regression? (T/F). Specify appropriate \code{glmgeefamily}
 #' @param usegee analyze raw data using General Estimating Equations? (T/F). Specify appropriate \code{glmgeefamily}
 #' @param glmgeefamily specify which family to use e.g. for logistic regression, use \code{"binomial"} and set \code{useglm=T}; for Poisson, use \code{"poisson"}
+#' @param exportfile Export the output to file? Options: \code{c(".csv", ".doc")}. See \code{q.write.to.word, stats::write.csv }
+#' @param exportpath Path relative to the working directory where exported files will be saved e.g. "OUTPUT" Do not begin or end with a backslash. If left empty, file will be exported to the working directory.
 #' @param dbexport specify which dataset to be exported. Options: c("noimp", "locf", "mimp", "")
-#' @param suffix suffix to be included in the file name for the exported output file
-#' @param design specify the study design. Options: c("parallel", "crossover", "pk"). pk = pharmacokinetics
+#' @param filesuffix filesuffix to be included in the file name for the exported output file
 #' 
 #' @details Analyze continuous data and test hypotheses
-#' @return Returns a data frame of means, standard deviations, medians, minimum-maximum ranges for each study arm and an associated p-value for each study time point in a parallel or crossover, repeated measures or non-repeated measures design, or a pharmacokinetics study.
+#' @return Returns a list containing data frame of means, standard deviations, medians, minimum-maximum ranges for each study arm and an associated p-value for each study time point in a parallel or crossover, repeated measures or non-repeated measures design.
 #' 
 #' @author Abdul Malik Sulley
 #' 
 #' @examples 
-#' SUBJECTNUM <- rep(1:6, each=4)
-#' OUTCOME <- c(rnorm(24,25,6))
-#' VISITNUMBER <- as.factor(c(rep(1:4,6)))
-#' GROUPING <- rep(c(rep("A",4), rep("B",4)), 3)
-#' q.data <- cbind.data.frame(SUBJECTNUM, OUTCOME, VISITNUMBER, GROUPING)
-#' qwickr.cont(db=q.data, resultfield="OUTCOME", groupvar="GROUPING", 
-#' baselinevisit="1", visitnumbers=c(2:4), 
+#' q.data <- rmdata
+#' qwickr.cont(db=q.data, design="parallel", outcomevar="BIOMARKER", idvar="SUBJECTNUM",
+#' groupvar="GROUPING", timevar="VISITNUMBER", baselinevisit="1", visitnumbers=c(2:4), 
 #' mimp="", locf=TRUE,  noimp=TRUE,
 #' runpairwise=FALSE, adj=FALSE, within.group="t-test", covs="FFFFTF", 
-#' assume.normal.dist=FALSE, useranks=TRUE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
-#' dbexport="", suffix="mysuffix", design="parallel")
+#' assume.normal.dist=FALSE, 
+#' useranks=TRUE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL, 
+#' exportfile=c(".doc"), exportpath="", dbexport="", filesuffix="mysuffix")
 #' @import tictoc
 #' @import crayon
 #' @import emmeans
 #' @import stringr
-#' @importFrom magrittr "%>%"
+#' @import utils
+#' @import stats
+#' @import car
 #' @export
 #'
 #'
 
-qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(), baselinevisit="", speccomp1=NA, speccomp2=NA, lloq=NA, 
+qwickr.cont <- function(db, design="parallel", outcomevar="", idvar="", groupvar="", timevar="",
+                    visitnumbers=c(), baselinevisit="", speccomp1=NA, speccomp2=NA, lloq=NA, 
                     mimp="cart", locf=FALSE,  noimp=TRUE, runpairwise=FALSE, adj=FALSE,
-                    within.group="both", covs="FFFFTF", assume.normal.dist=FALSE, useranks=FALSE, useglm=FALSE, usegee=FALSE, 
-                    glmgeefamily=NULL, dbexport="", design="parallel", suffix=""){
-#♣ TO DO ♣#####
+                    within.group="t-test", covs="FFFFTF", assume.normal.dist=FALSE, 
+                    useranks=FALSE, useglm=FALSE, usegee=FALSE, glmgeefamily=NULL,
+                    exportfile=c(".doc"), exportpath="", dbexport="", filesuffix=""){
 
   
-  #♣ Miscellaneous Stuff ♣####
+  #♣ Housekeeping ♣####
   project_code = "QWICKR"
   popn = "ITT"
   subgroup = ""
@@ -72,26 +76,39 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   output_path <- wd
   
   
-  
-  ### Micosoft Word output objects
-  payload <- payload.pairwise <- payload.pchange <- list()
-  
-  output.doc <- rtf::RTF(paste0(output_path, project_code, "Output.doc"))
-  output.pairwise.doc <- rtf::RTF(paste0(output_path, project_code, "Output.Pairwise.doc"))
-  output.pchange.doc <- rtf::RTF(paste0(output_path, project_code, "Output.PercentChange.doc"))
-  
-  
   #formatting stuff
   nt = "\t"  #new tab
   nl = "\n"  #new line
   nll = "\r"  #new paragraph/carriage return
   
+  payload <-  q.newPayload()
+  # payload <<- payload.pairwise <<- payload.pchange <<-  list()
+  # payload <<- payload.pairwise <<- payload.pchange <<-  q.newPayload()
+
+  ### Micosoft Word output objects
+  # output.doc <- rtf::RTF(paste0(output_path, project_code, "Output.doc"))
+  # output.pairwise.doc <- rtf::RTF(paste0(output_path, project_code, "Output.Pairwise.doc"))
+  # output.pchange.doc <- rtf::RTF(paste0(output_path, project_code, "Output.PercentChange.doc"))
   
+  
+  ## Export path for main output
+  if(exportpath != ""){ 
+    exppath <- paste0(getwd(), "/", exportpath, "/") 
+  } else { 
+    exppath <- paste0(getwd(), "/")
+  }
+  
+
+  
+  
+  
+  
+  #+--------------------------+#
+  #♣ HELPERS ♣####
+  #+--------------------------+#
   #show plots in 2x2 grid
-  par(mfrow=c(1,1))
-  
-  
-  
+  graphics::par(mfrow=c(1,1))
+
   
   ##formatting  to required decimal places
   n_decimals <- function(x, k) {
@@ -130,9 +147,9 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     #for (i in mygroups) {
     #t4 <- t3[t3$GROUPING == i,]
     t4 <- t3
-    tempData <- mice(t4, m=5, maxit=1, meth=c(imp_method), seed = 123)
+    tempData <- mice::mice(t4, m=5, maxit=1, meth=c(imp_method), seed = 123)
     #print(tempData$loggedEvents)
-    t5 <- complete(tempData, 3)
+    t5 <- mice::complete(tempData, 3)
     if(!exists("t.imp.mimp")){
       t.imp.mimp <- t5
       t.imp.mimp[is.na(t.imp.mimp$SUBJECTNUM),] <- NULL
@@ -203,33 +220,33 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
  
   ## Test for normality
   normality <- function(x){
-    cat(P("Plain:   ",shapiro.test(x)$p.value,"\n"))
-    cat(P("Log:     ",shapiro.test(log(x+1))$p.value,"\n"))
-    cat(P("SQRT:    ",shapiro.test(sqrt(x))$p.value,"\n"))
-    cat(P("Squared: ",shapiro.test((x^2))$p.value,"\n"))
+    cat(paste0("Plain:   ",shapiro.test(x)$p.value,"\n"))
+    cat(paste0("Log:     ",shapiro.test(log(x+1))$p.value,"\n"))
+    cat(paste0("SQRT:    ",shapiro.test(sqrt(x))$p.value,"\n"))
+    cat(paste0("Squared: ",shapiro.test((x^2))$p.value,"\n"))
     
     #plots
     a <- qqnorm(x)
     b <- qqline(x) 
-    c <- hist(x)
+    c <- graphics::hist(x)
     
     
   }
   
   normality2 <- function(x, field){
-    cat(P("Plain:   ",shapiro.test(field)$p.value,"\n"))
-    #cat(P("Log:     ",shapiro.test(log(field+1))$p.value,"\n"))
-    #cat(P("SQRT:    ",shapiro.test(sqrt(field))$p.value,"\n"))
-    #cat(P("Squared: ",shapiro.test((field^2))$p.value,"\n"))
+    cat(paste0("Plain:   ",shapiro.test(field)$p.value,"\n"))
+    #cat(paste0("Log:     ",shapiro.test(log(field+1))$p.value,"\n"))
+    #cat(paste0("SQRT:    ",shapiro.test(sqrt(field))$p.value,"\n"))
+    #cat(paste0("Squared: ",shapiro.test((field^2))$p.value,"\n"))
     
     #plots
     #a <- qqnorm(field)
     #b <- qqline(field) 
     #c <- hist(x)
     
-    ggplot(x, aes(x = field)) + 
-      geom_histogram(binwidth = 1/5) + 
-      theme(text = element_text(size = 20))
+    ggplot2::ggplot(x, ggplot2::aes(x = field)) + 
+      ggplot2::geom_histogram(binwidth = 1/5) + 
+      ggplot2::theme(text = ggplot2::element_text(size = 20))
     
     #ggarrange(c,
     #          labels = c("A", "B", "C"),
@@ -240,7 +257,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   assumptions <- function(x){
     cat("Shapiro Test: ",shapiro.test(resid(x))$p.value, nl) #test for nomality
     
-    hist( resid(x), breaks=25 )
+    graphics::hist( resid(x), breaks=25 )
     
     
     #test for normality of residuals
@@ -248,8 +265,8 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     qqline(resid(x)) 
     
     # test for independence of sampling
-    plot(fitted(x),resid(x))
-    abline(h=0, lty=2)
+    graphics::plot(fitted(x),resid(x))
+    graphics::abline(h=0, lty=2)
     #lines(smooth.spline(fitted(x),residuals(x)))
     
     cat("Levene Test: ",leveneTest(x)$`Pr(>F)`[1], nl, nl) #test for homogeneity of variances (centered around the median)
@@ -265,8 +282,8 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     qqline(resid(x)) 
     
     ## test for independence of sampling
-    plot(fitted(x),resid(x))
-    abline(h=0, lty=2)
+    graphics::plot(fitted(x),resid(x))
+    graphics::abline(h=0, lty=2)
     #lines(smooth.spline(fitted(x),residuals(x)))
     
   }
@@ -428,13 +445,20 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   }
 
   
-  AnalyzeCombined <- function( db, resultfield, groupvar, visitnumbers, baselinevisit, speccomp1=NA, speccomp2=NA, lloq=NA, 
-                               mimp="cart", locf=TRUE,  noimp=TRUE, demographics=FALSE, repeated=NA, runpairwise=FALSE, adj=FALSE,
-                               within.group="", covs="FFFFTF", assume.normal.dist=FALSE, useranks=TRUE, useglm=FALSE, usegee=FALSE, 
-                               glmgeefamily=NULL, dbexport="", suffix="suffix", design="parallel"){
+  
+  ####1a. Main Analysis Function ####
+  AnalyzeCombined <- function( db, design, outcomevar, idvar, groupvar, 
+                               timevar, visitnumbers, baselinevisit, speccomp1, speccomp2,
+                               lloq, mimp, locf,  noimp, demographics, runpairwise, adj,
+                               within.group, covs, assume.normal.dist, useranks, useglm, usegee, 
+                               glmgeefamily, dbexport, filesuffix ){ # repeated=NA, 
     
     
+    
+    db["SUBJECTNUM"] <- db[idvar]
     db["GROUPING"] <- db[groupvar]
+    db["VISITNUMBER"] <- db[timevar]
+    
     o = order( db$SUBJECTNUM, db$VISITNUMBER ); Db = db[o,]
     
     #impute values with lowest limit of quantification results (-33)
@@ -453,7 +477,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     #group.names <- grp.names[1:grps]
     #print(group.names)
     #safety.vars <- names(SafetyLabs.t[27:47])
-    #if(resultfield %in% c("COMPLIANCE", "AGE", "SBP", "DPB", "HR", "WEIGHT", "BMI", safety.vars)){
+    #if(outcomevar %in% c("COMPLIANCE", "AGE", "SBP", "DPB", "HR", "WEIGHT", "BMI", safety.vars)){
     #  grp.names <- c("ABC", "BCA", "CAB", "D", "E", "F", "G", "H", "I", "J") 
     #} else {
     #  grp.names <- c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J") 
@@ -469,13 +493,19 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     grps <- length(ggroups)
     group.names <- as.vector(grp.names[1:grps])
     cat(blue("Study Arms: " %+% as.character(toString(group.names))), nl)
-    output.pairwise <- output <- setNames(data.frame(matrix(ncol = grps+2, nrow = 0)), c("#", group.names, "p.val") )
+    
+    
+    output <- setNames(data.frame(matrix(ncol = grps+2, nrow = 0)), 
+                                          c("#", group.names, "p.val") )
     #View(output)
+    output.pairwise <- list()
+    output.pairwise.adj <- list()
+    
     
     ##IMPUTATION
     #Recode missing to NA 
     t.noimp <- Recode_NA(t)
-    missingpresent <- t.noimp[is.na(t.noimp[resultfield]),]
+    missingpresent <- t.noimp[is.na(t.noimp[outcomevar]),]
     t.imp.locf <- NA
     t.imp.mimp <- NA
     
@@ -524,17 +554,17 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     
     
     if(isTRUE(noimp)){
-      t.noimp["OUTCOME"] <- t.noimp[resultfield]
+      t.noimp["OUTCOME"] <- t.noimp[outcomevar]
       c.noimp <- GenDataFramesTRT(t.noimp, baselinevisit, visitnumbers, speccomp1, speccomp2)
-      
+      # print(c.noimp)
     }
     if(isTRUE(locf)){
-      t.imp.locf["OUTCOME"] <- t.imp.locf[resultfield]
+      t.imp.locf["OUTCOME"] <- t.imp.locf[outcomevar]
       c.imp.locf <- GenDataFramesTRT( t.imp.locf, baselinevisit, visitnumbers, speccomp1, speccomp2 )
       
     }
     if(mimp != ""){
-      t.imp.mimp["OUTCOME"] <- t.imp.mimp[resultfield]
+      t.imp.mimp["OUTCOME"] <- t.imp.mimp[outcomevar]
       c.imp.mimp <- GenDataFramesTRT( t.imp.mimp, baselinevisit, visitnumbers, speccomp1, speccomp2 )
       
     }
@@ -564,57 +594,60 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     # } else {
     #   repeated <- repeated
     # }
-    
-    cat(yellow("Repeated: " %+% as.character(toString(repeated))), nl)
-    
+    if(!isTRUE(demographics)){
+      cat(yellow("Repeated: " %+% as.character(toString(repeated))), nl)
+    }
+
     ##Pass data frames to respective functions for summaries
-    RunSummariesCombined <- function(c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, 
+    RunSummariesCombined <- function(c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, 
                                      demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, 
-                                     group.names, output, output.pairwise, design ){
+                                     group.names, output, output.pairwise, output.pairwise.adj, design ){
       if(isTRUE(demographics)){
         if(isTRUE(useglm)){
-          SumsGLMCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
+          result <- SumsGLMCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
                            useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design )
           
         } 
         else if(isTRUE(usegee)){
-          SumsGEECombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist,
+          result <- SumsGEECombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist,
                            useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design )
           
         } 
         else {
-          SumsCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
-                        useranks, ggroups, grps, group.names, output, output.pairwise, design )
+          result <- SumsCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
+                        useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
           output[NULL,]
           
         }
         
       } else if(isTRUE(repeated)){
         if(isTRUE(useglm)){
-          output <- SumsGLMCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design )
-          ChangeSumsRepeatedCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+          output <- SumsGLMCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design )
+          result <- ChangeSumsRepeatedCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
           output[NULL,]
           
         } else {
-          output <- SumsCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
-          ChangeSumsRepeatedCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+          output <- SumsCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
+          result <- ChangeSumsRepeatedCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
           output[NULL,]
           
         }
         
       } else {
         if(isTRUE(useglm)){
-          output <- SumsGLMCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design )
-          ChangeSumsCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+          output <- SumsGLMCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design )
+          result <- ChangeSumsCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
           output[NULL,]
           
         } else {
-          output <- SumsCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
-          ChangeSumsCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+          output <- SumsCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
+          result <- ChangeSumsCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
           output[NULL,]
           
         }
       }
+      
+      return(result)
     }
     
     
@@ -622,46 +655,49 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     
     if(isTRUE(noimp)){
       c.imp <- c.noimp
-      RunSummariesCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix=paste0(suffix,"_NoImp"), 
-                            demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+      result <- RunSummariesCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix=paste0(filesuffix,"_NoImp"), 
+                            demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
     }
     if(isTRUE(locf)){
       c.imp <- c.imp.locf
-      RunSummariesCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix=paste0(suffix,"_LOCF"), 
-                            demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+      result <- RunSummariesCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix=paste0(filesuffix,"_LOCF"), 
+                            demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
     }
     if(mimp != ""){
       c.imp <- c.imp.mimp
-      RunSummariesCombined( c.noimp, c.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix=paste0(suffix,"_Mimp"), 
-                            demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design )
+      result <- RunSummariesCombined( c.noimp, c.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix=paste0(filesuffix,"_Mimp"), 
+                            demographics, runpairwise, adj, within.group, covs, assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design )
     }
     
     cat(nl, "Analytical Population: ", popn, nl)
     
-    ##Export db if requested
+    ## Export db if requested
     if(dbexport == "noimp"){
-      write.csv(c.noimp, file = paste0(output_path, "/", resultfield, ".noimp.db.csv"))
-      return(c.noimp)
+      # write.csv(c.noimp, file = paste0(output_path, "/", outcomevar, ".noimp.db.csv"))
+      # return(c.noimp)
+      result[["noimp_data"]] <- c.noimp
       
     } else if (dbexport == "locf"){
-      write.csv(c.imp.locf, file = paste0(output_path, "/", resultfield, ".locf.db.csv"))
-      return(c.imp.locf)
+      # write.csv(c.imp.locf, file = paste0(output_path, "/", outcomevar, ".locf.db.csv"))
+      # return(c.imp.locf)
+      result[["locf_data"]] <- c.imp.locf
       
     } else if(dbexport == "mimp"){
       if(mimp != ""){
-        write.csv(c.imp.mimp, file = paste0(output_path, "/", resultfield, ".mimp.db.csv"))
-        return(c.imp.mimp)
+        # write.csv(c.imp.mimp, file = paste0(output_path, "/", outcomevar, ".mimp.db.csv"))
+        # return(c.imp.mimp)
+        result[["mimp_data"]] <- c.imp.mimp
         
       }
     }
     
-    
+    return(result)
   }
   
   
   #####1. Summarize Raw Data #####
-  SumsCombined <- function( db, db.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj,
-                            assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, design ){
+  SumsCombined <- function( db, db.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, filesuffix, demographics, runpairwise, adj,
+                            assume.normal.dist, useranks, ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design ){
     w <- db
     #print(summary(w))
     w <- db.imp #comment this out to generate descriptives using non-imputed dataset 
@@ -740,10 +776,13 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
             EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
             em.pairwise <- data.frame( EM5 )
             em.pairwise$p.value <- n_decimals(em.pairwise$p.value, 3)
+            em.pairwise$timepoint <- i
+            # print(em.pairwise)
             if(isTRUE(adj)){
               EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
               em.pairwise.adj <- data.frame( EM6 )
               em.pairwise.adj$p.value <- n_decimals(em.pairwise.adj$p.value, 3)
+              em.pairwise.adj$timepoint <- i
             }
           }
         }
@@ -765,7 +804,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
           #s.test <- with(u.imp$data, shapiro.test(OUTCOME)$p.value)
           #normality2(u.imp, u.imp$OUTCOME)
           #cat("Sums Shapiro Test 1: ", s.test, nl)
-          if(exists("s.test1")) cat(silver("  Shapiro Test for raw data: " %+% as.character(s.test1)), nl)
+          if(exists("s.test")) cat(silver("  Shapiro Test for raw data: " %+% as.character(s.test)), nl)
           
           #l.test <- try(leveneTest(resid(assum.m))$`Pr(>F)`[1])
           #l.test <- try(leveneTest(assum.m)$`Pr(>F)`[1])
@@ -802,10 +841,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                 EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
                 em.pairwise <- data.frame( EM5 )
                 em.pairwise$p.value <- paste0(n_decimals(em.pairwise$p.value, 3), " (r)")
+                em.pairwise$timepoint <- i
                 if(isTRUE(adj)){
                   EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
                   em.pairwise.adj <- data.frame( EM6 )
                   em.pairwise.adj$p.value <- paste0(n_decimals(em.pairwise.adj$p.value, 3), " (r)")
+                  em.pairwise.adj$timepoint <- i
                 }
               }
             } else {
@@ -843,7 +884,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                   if(isTRUE(runpairwise)){
                     #em.pairwise <- data.frame(AB=NA, AC=NA, BC=NA, AD=NA, BD=NA, CD=NA, AE=NA, BE=NA, CE=NA, DE=NA, AF=NA, BF=NA, CF=NA, DF=NA, EF=NA)
                     em.pairwise <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("contrast", "p.value") )
-                    posthoc <- kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method=NULL)
+                    posthoc <- PMCMRplus::kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method=NULL)
                     print(posthoc)
                     
                     #em.pair.p <- c( posthoc$p.value[1,1], posthoc$p.value[2,1], posthoc$p.value[2,2], 
@@ -888,11 +929,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                     posthoc3$contrast <- paste0(posthoc3$Var2, " - ", posthoc3$Var1)
                     posthoc3$p.value <- paste0(n_decimals(posthoc3$Freq, 3), " (k)")
                     em.pairwise <- posthoc3[c("contrast", "p.value")]
+                    em.pairwise$timepoint <- i
                     print(em.pairwise)
                     
                     if(isTRUE(adj)){
                       em.pairwise.adj <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("contrast", "p.value") )
-                      posthoc <- kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method="single-step")
+                      posthoc <- PMCMRplus::kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method="single-step")
                       print(posthoc)
                       posthoc1 <- as.matrix(posthoc$p.value)
                       posthoc2 <- as.data.frame(as.table(posthoc1))
@@ -900,6 +942,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                       posthoc3$contrast <- paste0(posthoc3$Var2, " - ", posthoc3$Var1)
                       posthoc3$p.value <- paste0(n_decimals(posthoc3$Freq, 3), " (k)")
                       em.pairwise.adj <- posthoc3[c("contrast", "p.value")]
+                      em.pairwise.adj$timepoint <- i
                       print(em.pairwise.adj)
                     }
                   }
@@ -941,11 +984,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                     EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
                     em.pairwise <- data.frame( EM5 )
                     em.pairwise$p.value <- paste0(n_decimals(em.pairwise$p.value, 3), " (l)")
-                    
+                    em.pairwise$timepoint <- i
                     if(isTRUE(adj)){
                       EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
                       em.pairwise.adj <- data.frame( EM6 )
                       em.pairwise.adj$p.value <- paste0(n_decimals(em.pairwise.adj$p.value, 3), " (l)")
+                      em.pairwise.adj$timepoint <- i
                     }
                   }
                 }
@@ -986,10 +1030,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                 EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
                 em.pairwise <- data.frame( EM5 )
                 em.pairwise$p.value <- n_decimals(em.pairwise$p.value, 3)
+                em.pairwise$timepoint <- i
                 if(isTRUE(adj)){
                   EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
                   em.pairwise.adj <- data.frame( EM6 )
                   em.pairwise.adj$p.value <- n_decimals(em.pairwise.adj$p.value, 3)
+                  em.pairwise.adj$timepoint <- i
                 }
               }
             }
@@ -1003,7 +1049,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       ## Output things ####
       #table header
       #header.output.list <- list()
-      #header.output.list[["#"]] <- resultfield
+      #header.output.list[["#"]] <- outcomevar
       #for(head_item in 1:grps) {
       #  header.output.list[[group.names[head_item]]] <- ""
       #}
@@ -1016,11 +1062,11 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       the.p.val <- as.character(p.val)
       #cat("the.p.val", the.p.val, nl)
       if(substring_right(the.p.val, 3) %in% c("(l)", "(r)", "(w)", "(k)")){
-        suffix <- substring_right(the.p.val, 3)
+        filesuffix <- substring_right(the.p.val, 3)
         a <- substr(the.p.val, 1, 6)
         a <- as.numeric(a)
         p.val <- n_decimals(a, 3)
-        p.val <- paste0(p.val, " ", suffix)
+        p.val <- paste0(p.val, " ", filesuffix)
       } else {
         a <- as.numeric(the.p.val)
         p.val <- n_decimals(a, 3)
@@ -1048,34 +1094,55 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       output[nrow(output) + 1,] = mr.output.list
       
       
+      # if(isTRUE(runpairwise)){
+      #   #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
+      #   output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
+      # 
+      #   #print("#===== EM-PAIRWISE ====#")
+      #   #print(em.pairwise)
+      #   #write.csv(em.pairwise, file=paste0(output_path, "/", outcomevar, "_Visit", i, ".csv"))
+      #   #unadjusted
+      #   unadj.output.list <- list()
+      #   unadj.output.list[["#"]] <- "Pairwise unadj"
+      #   for(q in 1:grps) {
+      #     unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+      #   }
+      #   unadj.output.list[["p.val"]] <- ""
+      #   #output[nrow(output) + 1,] = unadj.output.list ##uncomment to display pairwise comparisons in main output table/file
+      #   output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+      # 
+      #   #adjusted
+      #   if(isTRUE(adj)){
+      #     adj.output.list <- list()
+      #     adj.output.list[["#"]] <- "Pairwise adj"
+      #     for(r in 1:grps) {
+      #       adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+      #     }
+      #     adj.output.list[["p.val"]] <- ""
+      #     #output[nrow(output) + 1,] = adj.output.list ##uncomment to display pairwise comparisons in main output table/file
+      #     output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+      #   }
+      # }
+      
       if(isTRUE(runpairwise)){
-        #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
-        output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
+
         
-        #print("#===== EM-PAIRWISE ====#")
-        #print(em.pairwise)
-        #write.csv(em.pairwise, file=paste0(output_path, "/", resultfield, "_Visit", i, ".csv"))
-        #unadjusted
-        unadj.output.list <- list()
-        unadj.output.list[["#"]] <- "Pairwise unadj"
-        for(q in 1:grps) {
-          unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+        if(is.null(output.pairwise)){
+          output.pairwise <- em.pairwise
+        } else {
+          output.pairwise <- merge(output.pairwise, em.pairwise, all = T)
         }
-        unadj.output.list[["p.val"]] <- ""
-        #output[nrow(output) + 1,] = unadj.output.list ##uncomment to display pairwise comparisons in main output table/file
-        output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
         
-        #adjusted
+        
         if(isTRUE(adj)){
-          adj.output.list <- list()
-          adj.output.list[["#"]] <- "Pairwise adj"
-          for(r in 1:grps) {
-            adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+          if(is.null(output.pairwise.adj)){
+            output.pairwise.adj <- em.pairwise.adj
+          } else {
+            output.pairwise.adj <- merge(output.pairwise.adj, em.pairwise.adj, all = T)
           }
-          adj.output.list[["p.val"]] <- ""
-          #output[nrow(output) + 1,] = adj.output.list ##uncomment to display pairwise comparisons in main output table/file
-          output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
-        }
+          
+        } 
+        
       }
       
       #calculate time elapsed and restart clock
@@ -1086,10 +1153,10 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     
     #write to file or return output to main function
     #if(isTRUE(demographics)){
-    #  write.csv(output, file = paste(output_path, "/", resultfield, filesuffix, "_Sum.csv", sep=""))
+    #  write.csv(output, file = paste(output_path, "/", outcomevar, filesuffix, "_Sum.csv", sep=""))
     
     #  if(isTRUE(runpairwise)){
-    #    write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_Sum_pairwise.csv", sep=""))
+    #    write.csv(output.pairwise, file = paste(output_path, "/", outcomevar, filesuffix, "_Sum_pairwise.csv", sep=""))
     #  }
     
     #} else {
@@ -1098,31 +1165,58 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     
     #write to file or return output to main function
     if(isTRUE(runpairwise)){
-      output.pairwise <- em.pairwise[c("contrast", "p.value")]
+      # output.pairwise <- em.pairwise
+      output.pairwise.title <- paste0("Pairwise comparisons for ", outcomevar, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
+      payload[[paste0("SUMS TITLE: ", outcomevar, filesuffix, "pairwise_unadj")]] <- paste0("Unadjusted,", output.pairwise.title)
+      payload[[paste0("SUMS ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise
+      
       if(isTRUE(adj)){
-        output.pairwise <- em.pairwise.adj[c("contrast", "p.value")]
+        # output.pairwise.adj <- em.pairwise.adj
+        payload[[paste0("SUMS TITLE (ADJ): ", outcomevar, filesuffix, "pairwise_adj")]] <- paste0("Adjusted,", output.pairwise.title)
+        payload[[paste0("SUMS (ADJ) ", outcomevar, filesuffix, "pairwise_adj")]] <- output.pairwise.adj
       }
-      write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_Sum_pairwise.csv", sep=""))
-      #addTable(output.doc, output.pairwise, font.size=12, row.names=FALSE, NA.string="-")
-      output.pairwise.title <- paste0("Pairwise comparisons for ", resultfield, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
-      payload.pairwise[[paste0("SUMS TITLE: ", resultfield, filesuffix)]] <- output.pairwise.title
-      payload.pairwise[[paste0("SUMS ", resultfield, filesuffix)]] <- output.pairwise
+  
     }
     
+    
     if(isTRUE(demographics)){
-      print(output)
+      # print(output)
       output <- RenameHeaders(output, demographics)
-      write.csv(output, file = paste(output_path, "/", resultfield, filesuffix, "_Sum.csv", sep=""))
-      output.title <- paste0(resultfield, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
+      # write.csv(output, file = paste(output_path, "/", outcomevar, filesuffix, "_Sum.csv", sep=""))
+      output.title <- paste0(outcomevar, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
       #cat("#===== SUMCombined TITLE", output.title, nl)
-      payload[[paste0("TITLE: ", resultfield, filesuffix)]] <- output.title
-      payload[[paste0(resultfield, filesuffix)]] <- output
+      payload[[paste0("TITLE: ", outcomevar, filesuffix)]] <- output.title
+      payload[[paste0(outcomevar, filesuffix)]] <- output
+      
+      
+      #Export to file 
+      if(".csv" %in% exportfile){
+        utils::write.csv(output, 
+                         file = paste(exppath, outcomevar, filesuffix, ".csv", sep=""))
+        if(isTRUE(runpairwise)){
+          utils::write.csv(output.pairwise, 
+                           file = paste(exppath, outcomevar, filesuffix, 
+                                        "_Pairwise.csv", sep=""))
+        }
+      }
+      if(".doc" %in% exportfile){
+        print(exportpath)
+        q.write.to.word(payload, exportpath=exportpath, 
+                        docname=paste0(outcomevar, filesuffix))
+        
+        # if(isTRUE(runpairwise)){
+        #   q.write.to.word(payload.pairwise, exportpath=exportpath, 
+        #                   docname=paste0(outcomevar, filesuffix, "_Pairwise" ))
+        # }
+      }
       
       cat(green("v ") %+% blue("SUMMARY "), nl)
-      #print(output.title)
+      # print(output.title)
+      # print(payload)
       
       toc(); cat(nl);
       
+      return(payload)
       
     } else {
       return(output)
@@ -1133,7 +1227,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   #
   #
   #####2. Summarize Raw Data (Count data/Poisson distribution) #####
-  SumsGLMCombined <- function( db, db.imp, resultfield, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
+  SumsGLMCombined <- function( db, db.imp, outcomevar, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
                                useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design){
     
     if(is.null(glmgeefamily)){
@@ -1170,7 +1264,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       if(famm == "binomia"){
         #Logistic regression
         cat("# ------- ------- LOGISTIC REGRESSION - TIMEPOINT: ",i," ------- -------- #", nl)
-        mysumm <- SumCatGEE(u, resultfield="OUTCOME", ggroups=NULL, filesuffix )
+        mysumm <- SumCatGEE(u, outcomevar="OUTCOME", ggroups=NULL, filesuffix )
         print(mysumm)
         
       } else {
@@ -1197,7 +1291,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
           assum.model <- glm(OUTCOME ~ GROUPING + SEQ + PERIOD, data = u.imp, family = poisson(link = "log"), na.action = na.omit )
         }
         
-        od <- dispersiontest(assum.model)
+        od <- AER::dispersiontest(assum.model)
         od.test <- od$p.value
         cat(nl, "Over-dispersion Test1: ", od.test, nl)
       } else {
@@ -1231,10 +1325,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
             EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
             em.pairwise <- data.frame( EM5 )
             em.pairwise$p.value <- n_decimals(em.pairwise$p.value, 3)
+            em.pairwise$timepoint <- i
             if(isTRUE(adj)){
               EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
               em.pairwise.adj <- data.frame( EM6 )
               em.pairwise.adj$p.value <- n_decimals(em.pairwise.adj$p.value, 3)
+              em.pairwise.adj$timepoint <- i
             }
           }
           
@@ -1257,7 +1353,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
             p.val <- paste0(result$p.value, " (k)")
             
             if(isTRUE(runpairwise)){
-              posthoc <- kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method=NULL)
+              posthoc <- PMCMRplus::kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method=NULL)
               print(posthoc)
               
               posthoc1 <- as.matrix(posthoc$p.value)
@@ -1266,11 +1362,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
               posthoc3$contrast <- paste0(posthoc3$Var2, " - ", posthoc3$Var1)
               posthoc3$p.value <- paste0(n_decimals(posthoc3$Freq, 3), " (k)")
               em.pairwise <- posthoc3[c("contrast", "p.value")]
-              print(em.pairwise)
+              # print(em.pairwise)
+              em.pairwise$timepoint <- i
               
               if(isTRUE(adj)){
                 em.pairwise.adj <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("contrast", "p.value") )
-                posthoc <- kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method="single-step")
+                posthoc <- PMCMRplus::kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = u.imp, p.adjust.method="single-step")
                 print(posthoc)
                 posthoc1 <- as.matrix(posthoc$p.value)
                 posthoc2 <- as.data.frame(as.table(posthoc1))
@@ -1278,7 +1375,8 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                 posthoc3$contrast <- paste0(posthoc3$Var2, " - ", posthoc3$Var1)
                 posthoc3$p.value <- paste0(n_decimals(posthoc3$Freq, 3), " (k)")
                 em.pairwise.adj <- posthoc3[c("contrast", "p.value")]
-                print(em.pairwise.adj)
+                # print(em.pairwise.adj)
+                em.pairwise.adj$timepoint <- i
               }
               
             }
@@ -1322,10 +1420,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
             EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
             em.pairwise <- data.frame( EM5 )
             em.pairwise$p.value <- n_decimals(em.pairwise$p.value, 3)
+            em.pairwise$timepoint <- i
             if(isTRUE(adj)){
               EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
               em.pairwise.adj <- data.frame( EM6 )
               em.pairwise.adj$p.value <- n_decimals(em.pairwise.adj$p.value, 3)
+              em.pairwise.adj$timepoint <- i
             }
           }
           
@@ -1336,11 +1436,11 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
           
         } else{
           #glmer.model <- glmer(OUTCOME ~ GROUPING + (1|SUBJECTNUM), data = u.imp, family = poisson(link = "log"), na.action = na.omit )
-          glmer.model <- glmer(OUTCOME ~ GROUPING + (1|SUBJECTNUM), data = u.imp, family = glmgeefamily, na.action = na.omit )
+          glmer.model <- lme4::glmer(OUTCOME ~ GROUPING + (1|SUBJECTNUM), data = u.imp, family = glmgeefamily, na.action = na.omit )
           if(design == "parallel"){
-            glmer.model <- glmer(OUTCOME ~ GROUPING + (1|SUBJECTNUM), data = u.imp, family = glmgeefamily, na.action = na.omit )
+            glmer.model <- lme4::glmer(OUTCOME ~ GROUPING + (1|SUBJECTNUM), data = u.imp, family = glmgeefamily, na.action = na.omit )
           } else if(design == "crossover"){
-            glmer.model <- glmer(OUTCOME ~ GROUPING + SEQ + PERIOD + (1|SUBJECTNUM), data = u.imp, family = glmgeefamily, na.action = na.omit )
+            glmer.model <- lme4::glmer(OUTCOME ~ GROUPING + SEQ + PERIOD + (1|SUBJECTNUM), data = u.imp, family = glmgeefamily, na.action = na.omit )
           }
           
           EM <- emmeans( glmer.model, ~GROUPING )
@@ -1358,10 +1458,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
             EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
             em.pairwise <- data.frame( EM5 )
             em.pairwise$p.value <- n_decimals(em.pairwise$p.value, 3)
+            em.pairwise$timepoint <- i
             if(isTRUE(adj)){
               EM6 <- contrast( final.model2, "pairwise", adjust = "tukey" )
               em.pairwise.adj <- data.frame( EM6 )
               em.pairwise.adj$p.value <- n_decimals(em.pairwise.adj$p.value, 3)
+              em.pairwise.adj$timepoint <- i
             }
           }
         }
@@ -1371,12 +1473,12 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       
       the.p.val <- as.character(p.val)
       if(substring_right(the.p.val, 3) %in% c("(l)", "(r)", "(w)", "(k)")){
-        suffix <- substring_right(the.p.val, 3)
+        filesuffix <- substring_right(the.p.val, 3)
         a <- substr(the.p.val, 1, 6)
         a <- as.numeric(a)
         p.val <- n_decimals(a, 3)
         p.val <- ifelse(p.val == "1" | p.val == 1, "1.000", p.val)
-        p.val <- paste0(p.val, " ", suffix)
+        p.val <- paste0(p.val, " ", filesuffix)
       } else {
         a <- as.numeric(the.p.val)
         p.val <- n_decimals(a, 3)
@@ -1387,7 +1489,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       # Output things ####
       #table header
       #header.output.list <- list()
-      #header.output.list[["#"]] <- resultfield
+      #header.output.list[["#"]] <- outcomevar
       #for(head_item in 1:grps) {
       #  header.output.list[[group.names[head_item]]] <- ""
       #}
@@ -1402,33 +1504,33 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
         print("#===== BINOMIAL OUTPUT i ====#")
         print(output)
         
-        if(isTRUE(runpairwise)){
-          #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
-          output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
-          print("#==== Binomial em.pairwise =====#")
-          print(em.pairwise)
-          #unadjusted
-          unadj.output.list <- list()
-          unadj.output.list[["#"]] <- "Pairwise unadj"
-          for(q in 1:grps) {
-            unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
-          }
-          unadj.output.list[["p.val"]] <- ""
-          #output[nrow(output) + 1,] = unadj.output.list ##uncomment to display pairwise comparisons in main output table/file
-          output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
-          
-          if(isTRUE(adj)){
-            #adjusted
-            adj.output.list <- list()
-            adj.output.list[["#"]] <- "Pairwise adj"
-            for(r in 1:grps) {
-              adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
-            }
-            adj.output.list[["p.val"]] <- ""
-            #output[nrow(output) + 1,] = adj.output.list ##uncomment to display pairwise comparisons in main output table/file
-            output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
-          }
-        }
+        # if(isTRUE(runpairwise)){
+        #   #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
+        #   output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
+        #   print("#==== Binomial em.pairwise =====#")
+        #   print(em.pairwise)
+        #   #unadjusted
+        #   unadj.output.list <- list()
+        #   unadj.output.list[["#"]] <- "Pairwise unadj"
+        #   for(q in 1:grps) {
+        #     unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+        #   }
+        #   unadj.output.list[["p.val"]] <- ""
+        #   #output[nrow(output) + 1,] = unadj.output.list ##uncomment to display pairwise comparisons in main output table/file
+        #   output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+        #   
+        #   if(isTRUE(adj)){
+        #     #adjusted
+        #     adj.output.list <- list()
+        #     adj.output.list[["#"]] <- "Pairwise adj"
+        #     for(r in 1:grps) {
+        #       adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+        #     }
+        #     adj.output.list[["p.val"]] <- ""
+        #     #output[nrow(output) + 1,] = adj.output.list ##uncomment to display pairwise comparisons in main output table/file
+        #     output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+        #   }
+        # }
         
       } else {
         
@@ -1452,75 +1554,123 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
         output[nrow(output) + 1,] = mr.output.list
         
         
-        if(isTRUE(runpairwise)){
-          #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
-          output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
-          #print("#==== em.pairwise =====#")
-          #print(em.pairwise)
-          #unadjusted
-          unadj.output.list <- list()
-          unadj.output.list[["#"]] <- "Pairwise unadj"
-          for(q in 1:grps) {
-            unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
-          }
-          unadj.output.list[["p.val"]] <- ""
-          #output[nrow(output) + 1,] = unadj.output.list ##uncomment to display pairwise comparisons in main output table/file
-          output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
-          
-          if(isTRUE(adj)){
-            #adjusted
-            adj.output.list <- list()
-            adj.output.list[["#"]] <- "Pairwise adj"
-            for(r in 1:grps) {
-              adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
-            }
-            adj.output.list[["p.val"]] <- ""
-            #output[nrow(output) + 1,] = adj.output.list ##uncomment to display pairwise comparisons in main output table/file
-            output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
-          }
-        }
+        # if(isTRUE(runpairwise)){
+        #   #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
+        #   output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
+        #   #print("#==== em.pairwise =====#")
+        #   #print(em.pairwise)
+        #   #unadjusted
+        #   unadj.output.list <- list()
+        #   unadj.output.list[["#"]] <- "Pairwise unadj"
+        #   for(q in 1:grps) {
+        #     unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+        #   }
+        #   unadj.output.list[["p.val"]] <- ""
+        #   #output[nrow(output) + 1,] = unadj.output.list ##uncomment to display pairwise comparisons in main output table/file
+        #   output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+        #   
+        #   if(isTRUE(adj)){
+        #     #adjusted
+        #     adj.output.list <- list()
+        #     adj.output.list[["#"]] <- "Pairwise adj"
+        #     for(r in 1:grps) {
+        #       adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+        #     }
+        #     adj.output.list[["p.val"]] <- ""
+        #     #output[nrow(output) + 1,] = adj.output.list ##uncomment to display pairwise comparisons in main output table/file
+        #     output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+        #   }
+        # }
+        
+        
         
       }
       
-      
-      
-    }
-    
-    #if(isTRUE(runpairwise)){
-    #  write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "SumGLM_pairwise.csv", sep=""))
-    #  payload.pairwise[[paste0(resultfield, filesuffix)]] <- output.pairwise
-    #}
-    
-    #if(isTRUE(demographics)){
-    #  write.csv(output, file = paste(output_path, "/", resultfield, filesuffix, "_SumGLM.csv", sep=""))
-    #  payload[[paste0(resultfield, filesuffix)]] <- output
-    
-    #} else {
-    #  return(output)
-    #}
-    
-    #write to file or return output to main function
-    if(isTRUE(runpairwise)){
-      output.pairwise <- em.pairwise[c("contrast", "p.value")]
-      if(isTRUE(adj)){
-        output.pairwise <- em.pairwise.adj[c("contrast", "p.value")]
+      if(isTRUE(runpairwise)){
+        
+        
+        if(is.null(output.pairwise)){
+          output.pairwise <- em.pairwise
+        } else {
+          output.pairwise <- merge(output.pairwise, em.pairwise, all = T)
+        }
+        
+        
+        if(isTRUE(adj)){
+          if(is.null(output.pairwise.adj)){
+            output.pairwise.adj <- em.pairwise.adj
+          } else {
+            output.pairwise.adj <- merge(output.pairwise.adj, em.pairwise.adj, all = T)
+          }
+          
+        } 
+        
       }
-      write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_SumGLM_pairwise.csv", sep=""))
-      output.pairwise.title <- paste0("Pairwise comparisons for ", resultfield, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
-      payload.pairwise[[paste0("GLM TITLE: ", resultfield, filesuffix)]] <- output.pairwise.title
-      payload.pairwise[[paste0("GLM ", resultfield, filesuffix)]] <- output.pairwise
+      
     }
     
-    if(isTRUE(demographics)){
-      output <- RenameHeaders(output, demographics)
-      write.csv(output, file = paste(output_path, "/", resultfield, filesuffix, "_SumGLM.csv", sep=""))
-      output.title <- paste0(resultfield, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
-      payload[[paste0("GLM TITLE: ", resultfield, filesuffix)]] <- output.title
-      payload[[paste0("GLM ", resultfield, filesuffix)]] <- output
-      
-    } else {
-      return(output)
+    
+    
+    
+  
+  #write to file or return output to main function
+  if(isTRUE(runpairwise)){
+    # output.pairwise <- em.pairwise
+    output.pairwise.title <- paste0("Pairwise comparisons for ", outcomevar, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
+    payload[[paste0("GLM TITLE: ", outcomevar, filesuffix, "pairwise_unadj")]] <- paste0("Unadjusted,", output.pairwise.title)
+    payload[[paste0("GLM ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise
+    
+    if(isTRUE(adj)){
+      # output.pairwise.adj <- em.pairwise.adj
+      payload[[paste0("GLM TITLE (ADJ): ", outcomevar, filesuffix, "pairwise_adj")]] <- paste0("Adjusted,", output.pairwise.title)
+      payload[[paste0("GLM (ADJ) ", outcomevar, filesuffix, "pairwise_adj")]] <- output.pairwise.adj
     }
+    
+  }
+  
+  
+  if(isTRUE(demographics)){
+    # print(output)
+    output <- RenameHeaders(output, demographics)
+    # write.csv(output, file = paste(output_path, "/", outcomevar, filesuffix, "_Sum.csv", sep=""))
+    output.title <- paste0(outcomevar, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
+    #cat("#===== SUMCombined TITLE", output.title, nl)
+    payload[[paste0("GLM TITLE: ", outcomevar, filesuffix)]] <- output.title
+    payload[[paste0(outcomevar, filesuffix)]] <- output
+    
+    
+    #Export to file 
+    if(".csv" %in% exportfile){
+      utils::write.csv(output, 
+                       file = paste(exppath, outcomevar, filesuffix, ".csv", sep=""))
+      if(isTRUE(runpairwise)){
+        utils::write.csv(output.pairwise, 
+                         file = paste(exppath, outcomevar, filesuffix, 
+                                      "_Pairwise.csv", sep=""))
+      }
+    }
+    if(".doc" %in% exportfile){
+      print(exportpath)
+      q.write.to.word(payload, exportpath=exportpath, 
+                      docname=paste0(outcomevar, filesuffix))
+      
+      # if(isTRUE(runpairwise)){
+      #   q.write.to.word(payload.pairwise, exportpath=exportpath, 
+      #                   docname=paste0(outcomevar, filesuffix, "_Pairwise" ))
+      # }
+    }
+    
+    cat(green("v ") %+% blue("SUMMARY "), nl)
+    # print(output.title)
+    # print(payload)
+    
+    toc(); cat(nl);
+    
+    return(payload)
+    
+  } else {
+    return(output)
+  }
     
     
     
@@ -1530,7 +1680,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   #
   #
   #####3. Summarize Raw Data (Count data/Poisson distribution) #####
-  SumsGEECombined <- function( db, db.imp, resultfield, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
+  SumsGEECombined <- function( db, db.imp, outcomevar, baselinevisit, visitnumbers, filesuffix, demographics, runpairwise, adj, assume.normal.dist, 
                                useranks, ggroups, grps, group.names, output, output.pairwise, glmgeefamily=glmgeefamily, design ){
     
     if(is.null(glmgeefamily)){
@@ -1552,18 +1702,18 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       
       
       cat("# ------- ------- TIME POINT: ",i," ------- -------- #", nl)
-      sumcat <- SumCatGEE(u, resultfield="OUTCOME", ggroups=NULL, filesuffix )
+      sumcat <- SumCatGEE(u, outcomevar="OUTCOME", ggroups=NULL, filesuffix )
       print(sumcat)
       
       
       if(design == "parallel"){
-        gee.model <- gee(OUTCOME ~ GROUPING, 
-                         data = u.imp, family = glmgeefamily, id = SUBJECTNUM,
+        gee.model <- gee::gee(OUTCOME ~ GROUPING,  id = u.imp$SUBJECTNUM,
+                         data = u.imp, family = glmgeefamily,
                          corstr = "exchangeable", scale.fix = TRUE,
                          scale.value = 1, na.action = na.omit)
       } else if(design == "crossover"){
-        gee.model <- gee(OUTCOME ~ GROUPING + SEQ + PERIOD, 
-                         data = u.imp, family = glmgeefamily, id = SUBJECTNUM,
+        gee.model <- gee::gee(OUTCOME ~ GROUPING + SEQ + PERIOD,  id = u.imp$SUBJECTNUM,
+                         data = u.imp, family = glmgeefamily, 
                          corstr = "exchangeable", scale.fix = TRUE,
                          scale.value = 1, na.action = na.omit)
       }
@@ -1579,21 +1729,23 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
         EM5 <- contrast( EM2, "pairwise", adjust = NULL )
         em.pairwise <- data.frame( EM5 )
         em.pairwise$p.value <- n_decimals(em.pairwise$p.value, 3)
+        em.pairwise$timepoint <- i
         if(isTRUE(adj)){
           EM6 <- contrast( EM2, "pairwise", adjust = "tukey" )
           em.pairwise.adj <- data.frame( EM6 )
           em.pairwise.adj$p.value <- n_decimals(em.pairwise.adj$p.value, 3)
+          em.pairwise.adj$timepoint <- i
         }
       }
       
       
       the.p.val <- as.character(p.val)
       if(substring_right(the.p.val, 3) %in% c("(l)", "(r)", "(w)", "(k)")){
-        suffix <- substring_right(the.p.val, 3)
+        filesuffix <- substring_right(the.p.val, 3)
         a <- substr(the.p.val, 1, 6)
         a <- as.numeric(a)
         p.val <- n_decimals(a, 3)
-        p.val <- paste0(p.val, " ", suffix)
+        p.val <- paste0(p.val, " ", filesuffix)
       } else {
         a <- as.numeric(the.p.val)
         p.val <- n_decimals(a, 3)
@@ -1607,74 +1759,120 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       print(output)
       
       
+      # if(isTRUE(runpairwise)){
+      #   #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
+      #   output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
+      #   
+      #   #("#===== EM-PAIRWISE ====#")
+      #   #print(em.pairwise)
+      #   #unadjusted
+      #   unadj.output.list <- list()
+      #   unadj.output.list[["#"]] <- "Pairwise unadj"
+      #   for(q in 1:grps) {
+      #     unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+      #   }
+      #   unadj.output.list[["p.val"]] <- ""
+      #   output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+      #   
+      #   #adjusted      
+      #   if(isTRUE(adj)){
+      #     print("#===== ADJUSTED EM-PAIRWISE ====#")
+      #     print(em.pairwise.adj)
+      #     adj.output.list <- list()
+      #     adj.output.list[["#"]] <- "Pairwise adj"
+      #     for(r in 1:grps) {
+      #       adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+      #     }
+      #     adj.output.list[["p.val"]] <- ""
+      #     output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+      #   }
+      # }
+      
       if(isTRUE(runpairwise)){
-        #output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Visit ", i))
-        output.pairwise[nrow(output.pairwise) + 1,] = list(paste0(i))
         
-        #("#===== EM-PAIRWISE ====#")
-        #print(em.pairwise)
-        #unadjusted
-        unadj.output.list <- list()
-        unadj.output.list[["#"]] <- "Pairwise unadj"
-        for(q in 1:grps) {
-          unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+        
+        if(is.null(output.pairwise)){
+          output.pairwise <- em.pairwise
+        } else {
+          output.pairwise <- merge(output.pairwise, em.pairwise, all = T)
         }
-        unadj.output.list[["p.val"]] <- ""
-        output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
         
-        #adjusted      
+        
         if(isTRUE(adj)){
-          print("#===== ADJUSTED EM-PAIRWISE ====#")
-          print(em.pairwise.adj)
-          adj.output.list <- list()
-          adj.output.list[["#"]] <- "Pairwise adj"
-          for(r in 1:grps) {
-            adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+          if(is.null(output.pairwise.adj)){
+            output.pairwise.adj <- em.pairwise.adj
+          } else {
+            output.pairwise.adj <- merge(output.pairwise.adj, em.pairwise.adj, all = T)
           }
-          adj.output.list[["p.val"]] <- ""
-          output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
-        }
+          
+        } 
+        
       }
     }
     
     
-    #write to file or return output to main function
-    #if(isTRUE(runpairwise)){
-    #  write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_SumGEE_pairwise.csv", sep=""))
-    #  payload.pairwise[[paste0(resultfield, filesuffix)]] <- output.pairwise
-    #}
-    
-    #if(isTRUE(demographics)){
-    #  write.csv(output, file = paste(output_path, "/", resultfield, filesuffix, "_SumGEE.csv", sep=""))
-    #  payload[[paste0(resultfield, filesuffix)]] <- output
     
     
-    #} else {
-    #  return(output)
-    #}
+  
+  
+  
+  
+  
+  
+  #write to file or return output to main function
+  if(isTRUE(runpairwise)){
+    # output.pairwise <- em.pairwise
+    output.pairwise.title <- paste0("Pairwise comparisons for ", outcomevar, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
+    payload[[paste0("GEE TITLE: ", outcomevar, filesuffix, "pairwise_unadj")]] <- paste0("Unadjusted,", output.pairwise.title)
+    payload[[paste0("GEE ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise
     
-    #write to file or return output to main function
-    if(isTRUE(runpairwise)){
-      
-      output.pairwise <- em.pairwise[c("contrast", "p.value")]
-      if(isTRUE(adj)){
-        output.pairwise <- em.pairwise.adj[c("contrast", "p.value")]
-      }
-      
-      write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_SumGEE_pairwise.csv", sep=""))
-      output.pairwise.title <- paste0("Pairwise comparisons for ", resultfield, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
-      
-      payload.pairwise[[paste0("GEE TITLE: ", resultfield, filesuffix)]] <- output.pairwise.title
-      payload.pairwise[[paste0("GEE ", resultfield, filesuffix)]] <- output.pairwise
+    if(isTRUE(adj)){
+      # output.pairwise.adj <- em.pairwise.adj
+      payload[[paste0("GEE TITLE (ADJ): ", outcomevar, filesuffix, "pairwise_adj")]] <- paste0("Adjusted,", output.pairwise.title)
+      payload[[paste0("GEE (ADJ) ", outcomevar, filesuffix, "pairwise_adj")]] <- output.pairwise.adj
     }
     
-    if(isTRUE(demographics)){
-      output <- RenameHeaders(output, demographics)
-      write.csv(output, file = paste(output_path, "/", resultfield, filesuffix, "_SumGEE.csv", sep=""))
-      output.title <- paste0(resultfield, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
-      payload[[paste0("GEE TITLE: ", resultfield, filesuffix)]] <- output.title
-      payload[[paste0("GEE ", resultfield, filesuffix)]] <- output
+  }
+  
+  
+  if(isTRUE(demographics)){
+    # print(output)
+    output <- RenameHeaders(output, demographics)
+    # write.csv(output, file = paste(output_path, "/", outcomevar, filesuffix, "_Sum.csv", sep=""))
+    output.title <- paste0(outcomevar, " on ", baselinevisit ,", ", toString.default(visitnumbers), " in the ",popn ," population")
+    #cat("#===== SUMCombined TITLE", output.title, nl)
+    payload[[paste0("GEE TITLE: ", outcomevar, filesuffix)]] <- output.title
+    payload[[paste0(outcomevar, filesuffix)]] <- output
+    
+    
+    #Export to file 
+    if(".csv" %in% exportfile){
+      utils::write.csv(output, 
+                       file = paste(exppath, outcomevar, filesuffix, ".csv", sep=""))
+      if(isTRUE(runpairwise)){
+        utils::write.csv(output.pairwise, 
+                         file = paste(exppath, outcomevar, filesuffix, 
+                                      "_Pairwise.csv", sep=""))
+      }
+    }
+    if(".doc" %in% exportfile){
+      print(exportpath)
+      q.write.to.word(payload, exportpath=exportpath, 
+                      docname=paste0(outcomevar, filesuffix))
       
+      # if(isTRUE(runpairwise)){
+      #   q.write.to.word(payload.pairwise, exportpath=exportpath, 
+      #                   docname=paste0(outcomevar, filesuffix, "_Pairwise" ))
+      # }
+    }
+    
+    cat(green("v ") %+% blue("SUMMARY "), nl)
+    # print(output.title)
+    # print(payload)
+    
+    toc(); cat(nl);
+    return(payload)
+    
     } else {
       return(output)
     }
@@ -1684,9 +1882,9 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   #
   #
   #####4. Summarize change in outcome variable #####
-  ChangeSumsCombined <- function(db, db.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, 
+  ChangeSumsCombined <- function(db, db.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, 
                                  filesuffix, runpairwise, adj, withinpairs, covs, normoverride, useranks, 
-                                 ggroups, grps, group.names, output, output.pairwise, design ){
+                                 ggroups, grps, group.names, output, output.pairwise, output.pairwise.adj, design ){
     
     w.noimp <- db
     w.noimp <- db.imp #comment this out to generate descriptives using non-imputed dataset 
@@ -1961,7 +2159,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
           }
           #cat("Change Shapiro Test 1: ", s.test, nl)
           #cat("Change Levene's Test 1: ", l.test, nl, nl)
-          if(exists("s.test1")) cat(silver("  Shapiro Test for non-transformed data: " %+% as.character(s.test1)), nl)
+          if(exists("s.test")) cat(silver("  Shapiro Test for non-transformed data: " %+% as.character(s.test)), nl)
           
           
           if( s.test < 0.01 ){
@@ -2235,7 +2433,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                   
                   if(isTRUE(runpairwise)){
                     #em.pairwise <- data.frame(AB=NA, AC=NA, BC=NA, AD=NA, BD=NA, CD=NA, AE=NA, BE=NA, CE=NA, DE=NA, AF=NA, BF=NA, CF=NA, DF=NA, EF=NA)
-                    posthoc <- kwAllPairsNemenyiTest(CHANGE ~ GROUPING, data = w, p.adjust.method=NULL)
+                    posthoc <- PMCMRplus::kwAllPairsNemenyiTest(CHANGE ~ GROUPING, data = w, p.adjust.method=NULL)
                     print(posthoc)
                     #em.pair.p <- c( posthoc$p.value[1,1], posthoc$p.value[2,1], posthoc$p.value[2,2], 
                     #                posthoc$p.value[3,1], posthoc$p.value[3,2], posthoc$p.value[3,3],
@@ -2274,7 +2472,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                     
                     if(isTRUE(adj)){
                       em.pairwise.adj <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("contrast", "p.value") )
-                      posthoc <- kwAllPairsNemenyiTest(CHANGE ~ GROUPING, data = w, p.adjust.method="single-step")
+                      posthoc <- PMCMRplus::kwAllPairsNemenyiTest(CHANGE ~ GROUPING, data = w, p.adjust.method="single-step")
                       print(posthoc)
                       posthoc1 <- as.matrix(posthoc$p.value)
                       posthoc2 <- as.data.frame(as.table(posthoc1))
@@ -2368,14 +2566,14 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       the.p.val <- as.character(em.btwn$p.value[1])
       #cat("the.p.val", the.p.val, nl)
       if(substring_right(the.p.val, 3) %in% c("(l)", "(r)", "(w)", "(k)")){
-        suffix <- substring_right(the.p.val, 3)
+        filesuffix <- substring_right(the.p.val, 3)
         a <- substr(the.p.val, 1, 7)
         a <- as.numeric(a)
         p.val <- n_decimals(a, 3)
         if(p.val == "0.000"){ 
           p.val <- "<0.001"
         }
-        p.val <- paste0(p.val, " ", suffix)
+        p.val <- paste0(p.val, " ", filesuffix)
       }  else {
         a <- as.numeric(the.p.val)
         p.val <- n_decimals(a, 3)
@@ -2416,7 +2614,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       #print("DB from ChangeSums")
       #print(summary(w.imp))
       #output <- WithinPaired(w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, normoverride, ggroups, grps, output)
-      output <- WithinPaired(w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, normoverride, ggroups, grps, output)
+      output <- WithinPaired(w.imp, baselinevisit, speccomp1, speccomp2, i, normoverride, ggroups, grps, output)
       #}
       
       #percent changes
@@ -2443,89 +2641,114 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     
     
     #Run pairwise comparisons?
-    #if(isTRUE(runpairwise)){
-    #  write.csv(em.pairwise[c("contrast", "p.value")], file = paste(output_path, "/", resultfield, filesuffix, "_Change_pairwise.csv", sep=""))
-    #  #print(em.pairwise)
-    #}
-    
     if(isTRUE(runpairwise)){
-      output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Change from ", baselinevisit, " to ", i))
+      # print(em.pairwise)
+      # print(em.pairwise.adj)
       
-      #unadjusted
-      unadj.output.list <- list()
-      unadj.output.list[["#"]] <- "Pairwise unadj"
-      for(q in 1:grps) {
-        unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
-      }
-      unadj.output.list[["p.val"]] <- ""
-      output[nrow(output) + 1,] = unadj.output.list
-      output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+      
+      output.pairwise <- em.pairwise
+      
       
       
       if(isTRUE(adj)){
-        adj.output.list <- list()
-        adj.output.list[["#"]] <- "Pairwise adj"
-        for(r in 1:grps) {
-          adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
-        }
-        adj.output.list[["p.val"]] <- ""
-        output[nrow(output) + 1,] = adj.output.list
-        output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+        output.pairwise.adj <- em.pairwise.adj
+        
+        
+      } 
+      
+    }
+    #Export pairwis♥e comparisons
+    if(isTRUE(runpairwise)){
+      # output.pairwise <- em.pairwise[c("contrast", "VISITNUMBER", "p.value")]
+      # if(isTRUE(adj)){
+      #   output.pairwise <- em.pairwise.adj[c("contrast", "VISITNUMBER", "p.value")]
+      # }
+      
+      output.pairwise.title <- paste0("Pairwise comparisons for ", outcomevar, " on ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", outcomevar, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
+      payload[[paste0("CHG TITLE: ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise.title
+      payload[[paste0("CHG ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise
+      
+      if(isTRUE(adj)){
+        # output.pairwise.adj <- em.pairwise.adj
+        payload[[paste0("CHG TITLE (ADJ): ", outcomevar, filesuffix, "pairwise_adj")]] <- paste0("Adjusted,", output.pairwise.title)
+        payload[[paste0("CHG (ADJ) ", outcomevar, filesuffix, "pairwise_adj")]] <- output.pairwise.adj
       }
-      
-      
     }
     
     
+    #E♣port percent change output
+    output.pchange <- q.desc_stats(w.noimp[w.noimp$VISITNUMBER != baselinevisit,], outcomevar="PERCENT", groupvar="GROUPING", timevar="VISITNUMBER")
+    
+    output.pchange.title <- paste0("Percent changes for ", outcomevar, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
+    payload[[paste0("TITLE: ", outcomevar, filesuffix, "pchange")]] <- output.pchange.title
+    payload[[paste0(outcomevar, filesuffix, "pchange")]] <- output.pchange
     
     
     #Export main output
-    print(output)
-    output <- RenameHeaders(output, demographics, grps)
-    write.csv(output, file = paste0(output_path, "/", resultfield, filesuffix,".csv"))
-    output.title <- paste0(resultfield, " on ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", resultfield, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
-    payload[[paste0("TITLE: ", resultfield, filesuffix)]] <- output.title
-    payload[[paste0(resultfield, filesuffix)]] <- output
+    output <- RenameHeaders(output)
+    output.title <- paste0(outcomevar, " on$$at ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", outcomevar, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
+    payload[[paste0("TITLE: ", outcomevar, filesuffix)]] <- output.title
+    payload[[paste0(outcomevar, filesuffix)]] <- output
     cat(green("v ") %+% blue("SUMMARY"), nl)
-    #output.title1 <- toString(output.title)
-    #print(silver(output.title1))
-    #print(output)
+    # print(payload)
     
-    #Export pairwis♥e comparisons
-    if(isTRUE(runpairwise)){
-      output.pairwise <- em.pairwise[c("contrast", "p.value")]
-      if(isTRUE(adj)){
-        output.pairwise <- em.pairwise.adj[c("contrast", "p.value")]
+    
+    
+    # result <- list(payload, payload.pairwise, payload)
+    
+    #Export to file 
+    if(".csv" %in% exportfile){
+      # utils::write.csv(output, 
+      #                  file = paste(exppath, outcomevar, "_", filesuffix, ".csv", sep=""))
+      # if(isTRUE(runpairwise)){
+      #   utils::write.csv(output.pairwise, 
+      #                    file = paste(exppath, outcomevar, "_", filesuffix, 
+      #                                 "_Pairwise.csv", sep=""))
+      # }
+      
+      utils::write.csv(output, 
+                       file = paste(exppath, outcomevar, filesuffix, ".csv", sep=""))
+      if(isTRUE(runpairwise)){
+        utils::write.csv(output.pairwise, 
+                         file = paste(exppath, outcomevar, filesuffix, 
+                                      "_Pairwise.csv", sep=""))
       }
       
-      write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_Chg_pairwise.csv", sep=""))
-      output.pairwise.title <- paste0("Pairwise comparisons for ", resultfield, " on ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", resultfield, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
-      payload.pairwise[[paste0("CHG TITLE: ", resultfield, filesuffix)]] <- output.pairwise.title
-      payload.pairwise[[paste0("CHG ", resultfield, filesuffix)]] <- output.pairwise
+      utils::write.csv(output.pchange, 
+                       file = paste(exppath, outcomevar, filesuffix, "_PercentChange_", ".csv", sep=""))
     }
-    #Export percent change output
-    output.pchange <- q.desc_stats(w.noimp[w.noimp$VISITNUMBER != baselinevisit,], outcomevar="PERCENT", groupvar="GROUPING", timevar="VISITNUMBER")
-    write.csv(output.pchange, file = paste(output_path, "/", resultfield, filesuffix, "_PcentChg.csv", sep=""))
-    #payload[[paste0(resultfield, filesuffix)]] <- output
-    output.pchange.title <- paste0("Percent change for ", resultfield, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
-    payload.pchange[[paste0("TITLE: ", resultfield, filesuffix)]] <- output.pchange.title
-    payload.pchange[[paste0(resultfield, filesuffix)]] <- output.pchange
+    
+    
+    if(".doc" %in% exportfile){
+      q.write.to.word(payload, exportpath=exportpath, 
+                      docname=paste0(outcomevar, filesuffix))
+      
+      # if(isTRUE(runpairwise)){
+      #   q.write.to.word(payload.pairwise, exportpath=exportpath, 
+      #                   docname=paste0(outcomevar, filesuffix, "_Pairwise_"))
+      # }
+      # 
+      # q.write.to.word(output.pchange, exportpath=exportpath, 
+      #                 docname=paste0(outcomevar, filesuffix, "_PercentChange_"))
+    }
     
     toc(); cat(nl);
+    return(payload)
+    
   }
   #'
   #'
   #'
   #'
   #####5. REPEATED MEASURES#####
-  ChangeSumsRepeatedCombined <- function(db, db.imp, resultfield, baselinevisit, visitnumbers, speccomp1, speccomp2, 
+  ChangeSumsRepeatedCombined <- function(db, db.imp, outcomevar, baselinevisit, visitnumbers, speccomp1, speccomp2, 
                                          filesuffix, runpairwise, adj, within.group, covs, assume.normal.dist, useranks,
-                                         ggroups, grps, group.names, output, output.pairwise, design ){
+                                         ggroups, grps, group.names, output, output.pairwise,  output.pairwise.adj, design ){
     tic()
     w.noimp <- db
     w.noimp <- db.imp #comment this out to generate descriptives using non-imputed dataset 
     w.imp <- db.imp
-    
+
     #cat( nl, nl, "# ------- CHANGE REPEATED MEASURES -------- #", nl)
     #cat(green("v ") %+% blue("CHANGE REPEATED MEASURES " %+% as.character(i)), nl)
     cat(green("v ") %+% blue("CHANGE REPEATED MEASURES "), nl)
@@ -2538,7 +2761,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
     #w <- db[ which( db$LBTESTH == testname),]
     
     #prepare output object and other stuff
-    big.p.val <- list("","","")
+    # big.p.val <- list("","","")
     output.pchange <- setNames(data.frame(matrix(ncol = grps, nrow = 0)), c(group.names) )
     em.within <- data.frame(GROUPING = numeric(), VISITNUMBER = numeric(), emmean = numeric(), SE = numeric(), 
                             df = numeric(), lower.CL = numeric(), upper.CL = numeric(), t.ratio = numeric(),
@@ -3112,10 +3335,21 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
         }
         final.model2 <- update( EM, infer = c( TRUE, TRUE ))
         sum.mod <- summary(final.model)
-        em.btwn <- as.data.frame( sum.mod$tTable )
-        em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
-        cat("#-- Between p-values from assume.normal.dist parametric test", nl)
-        print(em.btwn)
+        if(f.model == "fit.pla2"){
+          EM4 <- joint_tests( final.model2, by = "VISITNUMBER" )
+          em.btwn <- data.frame( EM4 )
+          rownames(em.btwn) <- paste0("VISITNUMBER", em.btwn$VISITNUMBER)
+          colnames(em.btwn)[colnames(em.btwn) == "p.value"] <- "p-value"
+          em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
+          cat("#-- Between p-values from Parametric Test:", nl)
+          print(em.btwn)
+        } else {
+          em.btwn <- as.data.frame( sum.mod$tTable )
+          em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
+          cat("#-- Between p-values from assume.normal.dist parametric test", nl)
+          print(em.btwn)
+        }
+        
         
         ##pairwise comparisons 
         EM5 <- contrast( final.model2, "pairwise", by = "VISITNUMBER", adjust = NULL )
@@ -3426,7 +3660,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                   if(isTRUE(runpairwise)){
                     #pairwise comparisons
                     #ww <- rank(w[w$VISITNUMBER == m, "CHANGE" ], ties.method="max")
-                    posthoc <- kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = w[w$VISITNUMBER == m, ], p.adjust.method=NULL)
+                    posthoc <- PMCMRplus::kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = w[w$VISITNUMBER == m, ], p.adjust.method=NULL)
                     print(posthoc)
                     
                     posthoc1 <- as.matrix(posthoc$p.value)
@@ -3439,7 +3673,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                     
                     if(isTRUE(adj)){
                       em.pairwise.adj <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("contrast", "p.value") )
-                      posthoc <- kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = w[w$VISITNUMBER == m, ], p.adjust.method="single-step")
+                      posthoc <- PMCMRplus::kwAllPairsNemenyiTest(OUTCOME ~ GROUPING, data = w[w$VISITNUMBER == m, ], p.adjust.method="single-step")
                       print(posthoc)
                       posthoc1 <- as.matrix(posthoc$p.value)
                       posthoc2 <- as.data.frame(as.table(posthoc1))
@@ -3488,14 +3722,33 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
                 EM <- emmeans( log.final.model, ~GROUPING*VISITNUMBER + SEQ + PERIOD)
               }
               final.model2 <- update( EM, infer = c( TRUE, TRUE ))
-              
               sum.mod <- summary(log.final.model)
-              em.btwn <- as.data.frame( sum.mod$tTable )
-              em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
-              cat("#-- Between Groups p-values from Log Transform: ", nl)
-              print(em.btwn)
-              em.btwn$p.value <- em.btwn$`p-value`
-              em.btwn$`p-value` <- ifelse(is.na(em.btwn$`p-value`), NA, paste0(em.btwn$`p-value`, " (l)"))
+              # print(sum.mod)
+              if(log.f.model == "log.fit.pla2"){
+                #em.within <- data.frame( final.model2 )
+                #return(em.within)
+                #print(em.within)
+                #print(summary(final.model2))
+                EM4 <- joint_tests( final.model2, by = "VISITNUMBER" )
+                em.btwn <- data.frame( EM4 )
+                cat("#-- Between p-values from Log transform", nl)
+                
+                rownames(em.btwn) <- paste0("VISITNUMBER", em.btwn$VISITNUMBER)
+                colnames(em.btwn)[colnames(em.btwn) == "p.value"] <- "p-value"
+                em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
+                cat("#-- Between p-values from log transformed test", nl)
+                print(em.btwn)
+                em.btwn$p.value <- em.btwn$`p-value`
+                em.btwn$`p-value` <- ifelse(is.na(em.btwn$`p-value`), NA, paste0(em.btwn$`p-value`, " (l)"))
+              } else {
+                em.btwn <- as.data.frame( sum.mod$tTable )
+                em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
+                cat("#-- Between p-values from log transformed test", nl)
+                print(em.btwn)
+                em.btwn$p.value <- em.btwn$`p-value`
+                em.btwn$`p-value` <- ifelse(is.na(em.btwn$`p-value`), NA, paste0(em.btwn$`p-value`, " (l)"))
+                
+              }
               
               ##pairwise comparisons 
               EM5 <- contrast( final.model2, "pairwise", adjust = NULL )
@@ -3539,10 +3792,20 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
           final.model2 <- update( EM, infer = c( TRUE, TRUE ))
           
           sum.mod <- summary(final.model)
-          em.btwn <- as.data.frame( sum.mod$tTable )
-          em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
-          cat("#-- Between Groups p-values from Parametric Test: ", nl)
-          print(em.btwn)
+          if(f.model == "fit.pla2"){
+            EM4 <- joint_tests( final.model2, by = "VISITNUMBER" )
+            em.btwn <- data.frame( EM4 )
+            rownames(em.btwn) <- paste0("VISITNUMBER", em.btwn$VISITNUMBER)
+            colnames(em.btwn)[colnames(em.btwn) == "p.value"] <- "p-value"
+            em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
+            cat("#-- Between p-values from Parametric Test:", nl)
+            print(em.btwn)
+          } else {
+            em.btwn <- as.data.frame( sum.mod$tTable )
+            em.btwn$`p-value` <- sprintf("%.5f", em.btwn$`p-value`)
+            cat("#-- Between Groups p-values from Parametric Test: ", nl)
+            print(em.btwn)
+          }
           
           ##pairwise comparisons
           EM5 <- contrast( final.model2, "pairwise", by = "VISITNUMBER", adjust = NULL )
@@ -3623,7 +3886,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
         cat("the.p.val", the.p.val, nl)
         if(!is.na(the.p.val)){
           if(substring_right(the.p.val, 3) %in% c("(l)", "(r)", "(w)", "(k)")){
-            suffix <- substring_right(the.p.val, 3)
+            filesuffix <- substring_right(the.p.val, 3)
             a <- substr(the.p.val, 1, 7)
             a <- as.numeric(a)
             p.val <- n_decimals(a, 3)
@@ -3631,7 +3894,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
               p.val <- "<0.001"
             }
             
-            p.val <- paste0(p.val, " ", suffix)
+            p.val <- paste0(p.val, " ", filesuffix)
           } else {
             a <- as.numeric(the.p.val)
             p.val <- n_decimals(a, 3)
@@ -3707,7 +3970,7 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
             
             oo <- group.names[o]
             cat("Groups: ", group.names, nl, "GROUP: ", oo, " Baselinevisit: ", baselinevisit, " Visitnumber: ", i)
-            within.p <- em.within[em.within$V1 == paste0(oo, ",", baselinevisit) & em.within$V2 == paste0(oo, ",", i), "p.value" ]
+            within.p <- em.within[em.within$V1 == paste0(oo, " ", baselinevisit) & em.within$V2 == paste0(oo, " ", i), "p.value" ]
             within.p2 <- as.character(within.p)
             cat(nl, "within.p2 Group ", oo, " is ", within.p2, nl, nl)
             
@@ -3734,7 +3997,8 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       
       ## within groups paired t-test ##
       if(within.group %in% c("t-test", "both")){
-        output <- WithinPaired(w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, assume.normal.dist, ggroups, grps, output)
+        # output <- WithinPaired(w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, assume.normal.dist, ggroups, grps, output)
+        output <- WithinPaired(w.imp, baselinevisit, speccomp1, speccomp2, i, assume.normal.dist, ggroups, grps, output)
         
       }
       
@@ -3757,126 +4021,244 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       k=k+6
       l=l+1
       
-      if(isTRUE(runpairwise)){
-        
-        output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Change from ", baselinevisit, " to ", i))
-        
-        #unadjusted
-        unadj.output.list <- list()
-        unadj.output.list[["#"]] <- "Pairwise unadj"
-        for(q in 1:grps) {
-          unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
-        }
-        unadj.output.list[["p.val"]] <- ""
-        output[nrow(output) + 1,] = unadj.output.list
-        output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
-        
-        
-        if(isTRUE(adj)){
-          adj.output.list <- list()
-          adj.output.list[["#"]] <- "Pairwise adj"
-          for(r in 1:grps) {
-            adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
-          }
-          adj.output.list[["p.val"]] <- ""
-          output[nrow(output) + 1,] = adj.output.list
-          output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
-        }
-        
-        
-      }
+      # if(isTRUE(runpairwise)){
+      #   
+      #   output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Change from ", baselinevisit, " to ", i))
+      #   
+      #   #unadjusted
+      #   unadj.output.list <- list()
+      #   unadj.output.list[["#"]] <- "Pairwise unadj"
+      #   for(q in 1:grps) {
+      #     unadj.output.list[[group.names[q]]] <- paste0(em.pairwise$p.value[q], " (", em.pairwise$contrast[q], ")")
+      #   }
+      #   unadj.output.list[["p.val"]] <- ""
+      #   output[nrow(output) + 1,] = unadj.output.list
+      #   output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+      #   
+      #   
+      #   if(isTRUE(adj)){
+      #     adj.output.list <- list()
+      #     adj.output.list[["#"]] <- "Pairwise adj"
+      #     for(r in 1:grps) {
+      #       adj.output.list[[group.names[r]]] <- paste0(em.pairwise.adj$p.value[r], " (", em.pairwise.adj$contrast[r], ")")
+      #     }
+      #     adj.output.list[["p.val"]] <- ""
+      #     output[nrow(output) + 1,] = adj.output.list
+      #     output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+      #   }
+      #   
+      #   
+      # }
       
       
-      if(isTRUE(runpairwise)){
-        sub.empairwise <- em.pairwise[em.pairwise$VISITNUMBER == i,]
-        sub.empairwise.adj <- em.pairwise.adj[em.pairwise.adj$VISITNUMBER == i,]
-        
-        output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Change from ", baselinevisit, " to ", i))
-        unadj.output.list <- list()
-        adj.output.list <- list()
-        
-        unadj.output.list[["#"]] <- "Pairwise unadj"
-        for(q in 1:grps) {
-          unadj.output.list[[group.names[q]]] <- paste0(sub.empairwise$p.value[q], " (", sub.empairwise$contrast[q], ")")
-        }
-        unadj.output.list[["p.val"]] <- " "
-        output[nrow(output) + 1,] = unadj.output.list
-        output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
-        
-        if(isTRUE(adj)){
-          adj.output.list[["#"]] <- "Pairwise adj"
-          for(r in 1:grps) {
-            adj.output.list[[group.names[r]]] <- paste0(sub.empairwise.adj$p.value[q], " (", sub.empairwise.adj$contrast[q], ")")
-          }
-          adj.output.list[["p.val"]] <- " "
-          output[nrow(output) + 1,] = adj.output.list
-          output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
-        }
-      }
+      # if(isTRUE(runpairwise)){
+      #   sub.empairwise <- em.pairwise[em.pairwise$VISITNUMBER == i,]
+      #   sub.empairwise.adj <- em.pairwise.adj[em.pairwise.adj$VISITNUMBER == i,]
+      #   
+      #   output.pairwise[nrow(output.pairwise) + 1,] = list(paste0("Change from ", baselinevisit, " to ", i))
+      #   unadj.output.list <- list()
+      #   adj.output.list <- list()
+      #   
+      #   unadj.output.list[["#"]] <- "Pairwise unadj"
+      #   for(q in 1:grps) {
+      #     unadj.output.list[[group.names[q]]] <- paste0(sub.empairwise$p.value[q], " (", sub.empairwise$contrast[q], ")")
+      #   }
+      #   unadj.output.list[["p.val"]] <- " "
+      #   output[nrow(output) + 1,] = unadj.output.list
+      #   output.pairwise[nrow(output.pairwise) + 1,] = unadj.output.list
+      #   
+      #   if(isTRUE(adj)){
+      #     adj.output.list[["#"]] <- "Pairwise adj"
+      #     for(r in 1:grps) {
+      #       adj.output.list[[group.names[r]]] <- paste0(sub.empairwise.adj$p.value[q], " (", sub.empairwise.adj$contrast[q], ")")
+      #     }
+      #     adj.output.list[["p.val"]] <- " "
+      #     output[nrow(output) + 1,] = adj.output.list
+      #     output.pairwise[nrow(output.pairwise) + 1,] = adj.output.list
+      #   }
+      # }
+      
+      
+      # 
+      # if(isTRUE(runpairwise)){
+      #   em.pairwise$timepoint <- i
+      #   
+      #   if(isTRUE(adj) & is.null(output.pairwise.adj)){
+      #     em.pairwise.adj$timepoint <- i
+      #   }
+      #   
+      #   
+      #   if(is.null(output.pairwise)){
+      #     output.pairwise <- em.pairwise
+      #     
+      #     if(isTRUE(adj)){
+      #       output.pairwise.adj <- em.pairwise.adj
+      #     }
+      #     
+      #     
+      #   } else {
+      #     output.pairwise <- merge(output.pairwise, em.pairwise, all = T)
+      #     
+      #     if(isTRUE(adj)){
+      #       output.pairwise.adj <- merge(output.pairwise.adj, em.pairwise.adj, all = T)
+      #     }
+      #     
+      #     
+      #   }
+      #   
+      # }
+      
       
     }
     
+    
+    
+    
     #Run pairwise comparisons?
     #if(isTRUE(runpairwise)){
-    #  write.csv(output.pairwise, file = paste(output_path, "/", resultfield, filesuffix, "_Chg_pairwise.csv", sep=""))
+    #  write.csv(output.pairwise, file = paste(output_path, "/", outcomevar, filesuffix, "_Chg_pairwise.csv", sep=""))
     #  #print(em.pairwise)
     
-    #  payload.pairwise[[paste0(resultfield, filesuffix)]] <- output.pairwise
+    #  payload.pairwise[[paste0(outcomevar, filesuffix)]] <- output.pairwise
     #}
+    
+    
+    # if(isTRUE(runpairwise)){
+    #   
+    #   if(is.null(output.pairwise)){
+    #     output.pairwise <- em.pairwise
+    #     
+    #     if(isTRUE(adj)){
+    #       output.pairwise.adj <- em.pairwise.adj
+    #     }
+    #     
+    #     
+    #   } else {
+    #     output.pairwise <- merge(output.pairwise, em.pairwise, all = T)
+    #     
+    #     if(isTRUE(adj)){
+    #       output.pairwise.adj <- merge(output.pairwise.adj, em.pairwise.adj, all = T)
+    #     }
+    #     
+    #     
+    #   }
+    #   
+    # }
     
     
     
     #Export main output
-    #write.csv(output, file = paste0(output_path, "/", resultfield, filesuffix,".csv"))
-    #payload[[paste0(resultfield, filesuffix)]] <- output
+    #write.csv(output, file = paste0(output_path, "/", outcomevar, filesuffix,".csv"))
+    #payload[[paste0(outcomevar, filesuffix)]] <- output
     
     
     
     #Export percent change output
-    #write.csv(output.pchange, file = paste0(output_path, "/", resultfield, "_PcentChg.csv"))
-    #payload.pchange[[paste0(resultfield, filesuffix)]] <- output.pchange
+    #write.csv(output.pchange, file = paste0(output_path, "/", outcomevar, "_PcentChg.csv"))
+    #payload.pchange[[paste0(outcomevar, filesuffix)]] <- output.pchange
+    
+    if(isTRUE(runpairwise)){
+      # print(em.pairwise)
+      # print(em.pairwise.adj)
+      
+      
+      output.pairwise <- em.pairwise
+      
+      
+      
+      if(isTRUE(adj)){
+        output.pairwise.adj <- em.pairwise.adj
+        
+        
+      } 
+      
+    }
+    #Export pairwis♥e comparisons
+    if(isTRUE(runpairwise)){
+      # output.pairwise <- em.pairwise[c("contrast", "VISITNUMBER", "p.value")]
+      # if(isTRUE(adj)){
+      #   output.pairwise <- em.pairwise.adj[c("contrast", "VISITNUMBER", "p.value")]
+      # }
+      
+      output.pairwise.title <- paste0("Pairwise comparisons for ", outcomevar, " on ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", outcomevar, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
+      payload[[paste0("CHG TITLE: ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise.title
+      payload[[paste0("CHG ", outcomevar, filesuffix, "pairwise_unadj")]] <- output.pairwise
+      
+      if(isTRUE(adj)){
+        # output.pairwise.adj <- em.pairwise.adj
+        payload[[paste0("CHG TITLE (ADJ): ", outcomevar, filesuffix, "pairwise_adj")]] <- paste0("Adjusted,", output.pairwise.title)
+        payload[[paste0("CHG (ADJ) ", outcomevar, filesuffix, "pairwise_adj")]] <- output.pairwise.adj
+      }
+    }
+    
+    
+    #E♣port percent change output
+    output.pchange <- q.desc_stats(w.noimp[w.noimp$VISITNUMBER != baselinevisit,], outcomevar="PERCENT", groupvar="GROUPING", timevar="VISITNUMBER")
+
+    output.pchange.title <- paste0("Percent changes for ", outcomevar, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
+    payload[[paste0("TITLE: ", outcomevar, filesuffix, "pchange")]] <- output.pchange.title
+    payload[[paste0(outcomevar, filesuffix, "pchange")]] <- output.pchange
     
     
     #Export main output
-    cat(green("v ") %+% blue("SUMMARY"), nl)
-    print(output)
     output <- RenameHeaders(output)
+    output.title <- paste0(outcomevar, " on$$at ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", outcomevar, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
+    payload[[paste0("TITLE: ", outcomevar, filesuffix)]] <- output.title
+    payload[[paste0(outcomevar, filesuffix)]] <- output
+    cat(green("v ") %+% blue("SUMMARY"), nl)
+    # print(payload)
     
-    write.csv(output, file = paste0(output_path, "/", resultfield, "_", filesuffix,".csv"))
-    output.title <- paste0(resultfield, " on$$at ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", resultfield, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
-    payload[[paste0("TITLE: ", resultfield, filesuffix)]] <- output.title
-    payload[[paste0(resultfield, filesuffix)]] <- output
-    #cat(green("v ") %+% blue("SUMMARY"), nl)
-    #print(output)
     
-    #Export pairwis♥e comparisons
-    if(isTRUE(runpairwise)){
-      output.pairwise <- em.pairwise[c("contrast", "VISITNUMBER", "p.value")]
-      if(isTRUE(adj)){
-        output.pairwise <- em.pairwise.adj[c("contrast", "VISITNUMBER", "p.value")]
+    
+    # result <- list(payload, payload.pairwise, payload.pchange)
+    
+    #Export to file 
+    if(".csv" %in% exportfile){
+      # utils::write.csv(output, 
+      #                  file = paste(exppath, outcomevar, "_", filesuffix, ".csv", sep=""))
+      # if(isTRUE(runpairwise)){
+      #   utils::write.csv(output.pairwise, 
+      #                    file = paste(exppath, outcomevar, "_", filesuffix, 
+      #                                 "_Pairwise.csv", sep=""))
+      # }
+      
+      utils::write.csv(output, 
+                       file = paste(exppath, outcomevar, filesuffix, ".csv", sep=""))
+      if(isTRUE(runpairwise)){
+        utils::write.csv(output.pairwise, 
+                         file = paste(exppath, outcomevar, filesuffix, 
+                                      "_Pairwise.csv", sep=""))
       }
       
-      write.csv(output.pairwise, file = paste(output_path, "/", resultfield, "_", filesuffix, "_Chg_pairwise.csv", sep=""))
-      output.pairwise.title <- paste0("Pairwise comparisons for ", resultfield, " on ", baselinevisit ," and ", toString.default(visitnumbers), "; change in ", resultfield, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
-      payload.pairwise[[paste0("CHG TITLE: ", resultfield, filesuffix)]] <- output.pairwise.title
-      payload.pairwise[[paste0("CHG ", resultfield, filesuffix)]] <- output.pairwise
+      utils::write.csv(output.pchange, 
+                       file = paste(exppath, outcomevar, filesuffix, "_PercentChange_", ".csv", sep=""))
     }
-    #E♣port percent change output
-    output.pchange <- q.desc_stats(w.noimp[w.noimp$VISITNUMBER != baselinevisit,], outcomevar="PERCENT", groupvar="GROUPING", timevar="VISITNUMBER")
-    write.csv(output.pchange, file = paste(output_path, "/", resultfield, "_", filesuffix, "_PcentChg.csv", sep=""))
-    #payload[[paste0(resultfield, filesuffix)]] <- output
-    output.pchange.title <- paste0("Percent changes for ", resultfield, " from ", baselinevisit ," to ", toString.default(visitnumbers), " in the ",popn ," population")
-    payload.pchange[[paste0("TITLE: ", resultfield, filesuffix)]] <- output.pchange.title
-    payload.pchange[[paste0(resultfield, filesuffix)]] <- output.pchange
+    
+    
+    if(".doc" %in% exportfile){
+      q.write.to.word(payload, exportpath=exportpath, 
+                      docname=paste0(outcomevar, filesuffix))
+      
+      # if(isTRUE(runpairwise)){
+      #   q.write.to.word(payload.pairwise, exportpath=exportpath, 
+      #                 docname=paste0(outcomevar, filesuffix, "_Pairwise_"))
+      # }
+      # 
+      # q.write.to.word(payload.pchange, exportpath=exportpath, 
+      #                 docname=paste0(outcomevar, filesuffix, "_PercentChange_"))
+    }
     
     toc(); cat(nl);
+    return(payload)
+    # return(result)
   }
   #'
   #'
   #'
   #'
   #####6. Within group analysis for sensitivity testing #####
-  WithinPaired <- function( w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, assume.normal.dist, ggroups, grps, output ){
+  # WithinPaired <- function( w.imp, baselinevisit, speccomp1, speccomp2, i, big.p.val, assume.normal.dist, ggroups, grps, output ){
+  WithinPaired <- function( w.imp, baselinevisit, speccomp1, speccomp2, i, assume.normal.dist, ggroups, grps, output ){ #removed big.p.val
     #ggroups <- w.imp$GROUPING
     #ggroups <- unique(ggroups)
     #cat("GGROUPS: ", ggroups, nl)
@@ -4018,9 +4400,9 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
   }
   #
   #
-  #7. Categorical variables for GEE analysis ####
-  SumCatGEE <- function(db, resultfield, ggroups=NULL, filesuffix){
-    db["OUTCOME"] <- db[resultfield]
+  #####7. Categorical variables for GEE analysis ####
+  SumCatGEE <- function(db, outcomevar, ggroups=NULL, filesuffix){
+    db["OUTCOME"] <- db[outcomevar]
     if(is.null(ggroups)){
       ggroups <- db$GROUPING
       ggroups <- unique(ggroups)
@@ -4102,37 +4484,57 @@ qwickr.cont <- function(db, resultfield="", groupvar="GROUPING", visitnumbers=c(
       }
     }
     
-    #payload[[paste0(resultfield, filesuffix)]] <- output
+    #payload[[paste0(outcomevar, filesuffix)]] <- output
     
     return(output)
-    #write.csv(output, file = paste(output_path, "/", resultfield,"_", grps, "_Cat.csv", sep=""))
+    #write.csv(output, file = paste(output_path, "/", outcomevar,"_", grps, "_Cat.csv", sep=""))
   }
   #
   #
   # Helper functions end here #
   
-  #MAIN ANALYSIS FUNCTIONS BEGIN HERE ####
+  
+  
+  
+  
+  
+  
+  #♣ CALL MAIN ANALYSIS FUNCTION HERE ♣####
   cat( "+-----------------------------+", nl)
-  cat(green("ANALYZE " %+% as.character(resultfield)) %+% nl)
+  cat(green("ANALYZE " %+% as.character(outcomevar)) %+% nl)
   cat( "+-----------------------------+", nl)
   cat(blue("Design: ") %+% silver(design), nl)
   tic()
   
-  if(within.group == "none"){
+  
+  
+  if(within.group == "none" | within.group == ""){
     demographics = T
   } else {
     demographics = F
   }
   
+  # payload <<- payload.pairwise <<- payload.pchange <<-  q.newPayload()
+  
+  # payload <-  q.newPayload()
+  
   if(design %in% c("parallel", "crossover")){
-    AnalyzeCombined( db=db, resultfield=resultfield, groupvar=groupvar, visitnumbers=visitnumbers, baselinevisit=baselinevisit, speccomp1=speccomp1, speccomp2=speccomp2, lloq=lloq, mimp=mimp, locf=locf,  noimp=noimp, demographics=demographics, runpairwise=runpairwise, adj=adj, within.group=within.group, repeated=repeated, covs=covs, assume.normal.dist=assume.normal.dist, useranks=useranks, useglm=useglm, usegee=usegee, glmgeefamily=glmgeefamily, dbexport=dbexport, suffix=suffix, design=design)
+    result <- AnalyzeCombined( db=db, design=design, outcomevar=outcomevar, idvar=idvar, groupvar=groupvar, 
+                               timevar=timevar, visitnumbers=visitnumbers, baselinevisit=baselinevisit, 
+                               speccomp1=speccomp1, speccomp2=speccomp2, lloq=lloq, mimp=mimp, locf=locf,  noimp=noimp, 
+                               demographics=demographics, runpairwise=runpairwise, adj=adj, within.group=within.group, covs=covs, 
+                               assume.normal.dist=assume.normal.dist, useranks=useranks, useglm=useglm, usegee=usegee, glmgeefamily=glmgeefamily, 
+                               dbexport=dbexport, filesuffix=filesuffix) #repeated=repeated,
+    
     
     
   } else {
     stop("Please specify study design. Options = c('parallel', 'crossover')")
   }
   
-  result <- list(payload, payload.pairwise, payload.pchange)
+  
+  # RETURN ANALYSIS OUTPUT ####
+  # print(result)
   return(result)
   
 }

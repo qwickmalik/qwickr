@@ -18,7 +18,7 @@
 #' @param genpvalues Should a Chi Square or Fisher's Exact test be performed? \code{T/F}. If true, the function will determine which test to perform
 #' @param runpairwise Run pairwise comparisons for each unique group pair? \code{T/F}
 #' @param exportfile Export the output to file? Options: \code{c(".csv", ".doc")}. See \code{q.write.to.word, stats::write.csv }
-#' @param exportpath Path relative to the working directory where exported files will be saved e.g. "/OUTPUT". Always begin with a backslash and end without one. If left empty, file will be exported to the working directory.
+#' @param exportpath Path relative to the working directory where exported files will be saved e.g. "OUTPUT" Do not begin or end with a backslash. If left empty, file will be exported to the working directory.
 #' @details The function will automatically determine whether to use Chi Square or Fisher's Exact test based on the nature of the data.
 #' @return Returns a data frame of counts and percentages for each study arm and an associated p-value for each study time point in a repeated measures design.
 #' 
@@ -38,7 +38,8 @@
 #'
 
 qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NULL,
-                  filesuffix="", t.title="", genpvalues=T, runpairwise=F, exportfile=c(), exportpath=""){
+                  filesuffix="", t.title="", genpvalues=T, runpairwise=F, 
+                  exportfile=c(), exportpath=""){
   
   q.payload <- q.newPayload()
   cr_symb = "\u00BF"
@@ -64,8 +65,16 @@ qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NUL
   tic()
   
   cat("Study groups: ", group.names, "\n")
-  output.pairwise <- output <- stats::setNames(data.frame(matrix(ncol = grps+2, nrow = 0)),
-                                        c("Variable", group.names, "p-value") )
+  if(isTRUE(genpvalues)){
+    output <- stats::setNames(data.frame(matrix(ncol = grps+2, nrow = 0)),
+                                       c("Variable", group.names, "p-value") )
+    output.pairwise <- stats::setNames(data.frame(matrix(ncol = grps+1, nrow = 0)),
+                                                 c("Variable", group.names) )
+  } else {
+    output.pairwise <- output <- stats::setNames(data.frame(matrix(ncol = grps+1, nrow = 0)),
+                                                 c("Variable", group.names) )
+  }
+  
   
   p.val <- NULL
   vvists <- db$VISITNUMBER
@@ -121,7 +130,9 @@ qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NUL
     for(k in 1:grps) {
       p.output.list[[group.names[k]]] <- " "
     }
-    p.output.list[["p-value"]] <- p.val
+    if(isTRUE(genpvalues)){
+      p.output.list[["p-value"]] <- p.val
+    }
     output[nrow(output) + 1, ] = p.output.list
     
     for(i in outcome){
@@ -134,15 +145,16 @@ qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NUL
                  " (", q.n_decimals(result.percent$Freq[result.percent$OUTCOME == i &
                         result.percent$GROUPING == grp.names[j]], 2), "%)")
       }
-      output.list[["p-value"]] <- " "
-      
+      if(isTRUE(genpvalues)){
+        output.list[["p-value"]] <- " "
+      }
       output[nrow(output) + 1,] = output.list
     }
     
     #print(output)
     
     
-    if(isTRUE(runpairwise)){
+    if(isTRUE(runpairwise) & isTRUE(genpvalues)){
       output.list.pairwise <- list()
       output.list.pairwise[["Variable"]] <- paste0("Time ", vvist)
       grp.combs <- expand.grid(specgroups, specgroups)
@@ -184,12 +196,15 @@ qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NUL
         cat(silver("Final pairwise p-value: " %+% as.character(p.val)), "\n", "\n")
         
         output.list.pairwise[[paste0(grp.combs$Var1[g], grp.combs$Var2[g])]] <- 
-          paste0(p.val, " (", pw.grps, ")")
+            paste0(p.val, " (", pw.grps, ")")
+        
+        
+      
+        
         
         
       }
-      
-      output.list.pairwise[["p-value"]] <- " "
+      # output.list.pairwise[["p-value"]] <- " "
       
       #output.pairwise[nrow(output.pairwise) + 1,] = output.list.pairwise
       output.pairwise <- data.frame(t(sapply(output.list.pairwise,c)))
@@ -213,15 +228,22 @@ qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NUL
   for(head_item in 1:grps) {
     header.output.list[[group.names[head_item]]] <- ""
   }
-  header.output.list[["p-value"]] <- ""
+  header.output.list.pairwise <- header.output.list
+  if(isTRUE(genpvalues)){
+    header.output.list[["p-value"]] <- ""
+  }
   output[nrow(output) + 1,] = header.output.list
-  output.pairwise[nrow(output.pairwise) + 1,] = header.output.list
+  output.pairwise[nrow(output.pairwise) + 1,] = header.output.list.pairwise
   
   #Table header
   output <- q.rename_headers(output, type="categorical")
   
   ## Export main output
-  if(!exportpath == ""){ exportpath <- paste0(getwd(), "/", exportpath, "/") } else { exportpath <- paste0(getwd(), "/") }
+  if(!exportpath == ""){ 
+    exppath <- paste0(getwd(), "/", exportpath, "/") 
+  } else { 
+    exppath <- paste0(getwd(), "/")
+  }
   
   #utils::write.csv(output, file = paste(exportpath, filesuffix, outcomevar,"_", grps, "_Cat.csv", sep=""))
   if(is.null(t.title) | is.na(t.title) | t.title == ""){
@@ -245,13 +267,17 @@ qwickr.cat <- function(x, outcomevar="", groupvar="", timevar="", specgroups=NUL
   
   #Export to file 
   if(".csv" %in% exportfile){
-    utils::write.csv(output, file = paste(exportpath, outcomevar, filesuffix, ".csv", sep=""))
+    utils::write.csv(output, 
+                     file = paste(exppath, outcomevar, filesuffix, ".csv", sep=""))
     if(isTRUE(runpairwise)){
-      utils::write.csv(output.pairwise, file = paste(exportpath, outcomevar, filesuffix, "_Pairwise.csv", sep=""))
+      utils::write.csv(output.pairwise, 
+                       file = paste(exppath, outcomevar, filesuffix, 
+                                    "_Pairwise.csv", sep=""))
     }
   }
   if(".doc" %in% exportfile){
-    q.write.to.word(q.payload, exportpath=exportpath, docname=paste0(outcomevar, "_", filesuffix))
+    q.write.to.word(q.payload, exportpath=exportpath, 
+                    docname=paste0(outcomevar, "_", filesuffix))
   }
   
   #print(q.payload)
