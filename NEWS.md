@@ -12,7 +12,6 @@
 # Changes in version 0.6.0 (2021-11-08)
 * Made various improvements to combine all outputs from `qwickr.cont()` as a single level list instead of a multi-level list
 
-
 # Changes in version 0.5.0 (2021-11-02)
 * Added idvar and timevar arguments to `qwickr.cont()` for specifying unique subject ID and time variables. This means users don't have to rename their variables to match the test data in order to use the function.
 
