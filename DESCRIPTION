@@ -1,8 +1,8 @@
 Package: qwickr
 Type: Package
 Title: A Quick and Easy Way to Analyze and Report Phase I-IV Clinical Trial Data including Pharmacokinetics
-Version: 0.7.0
-Date: 2022-03-09
+Version: 0.8.0
+Date: 2022-03-11
 Author: Abdul Malik Sulley 
 Maintainer: Abdul Malik Sulley <asulley@uwo.ca>
 Description: A Quick and Easy Way to Summarize and Report Phase I-IV Clinical Trial Data including Pharmacokinetics.

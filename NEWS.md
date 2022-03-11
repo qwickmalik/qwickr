@@ -5,12 +5,16 @@
 ## Initial CRAN Submission
 * **CRAN** Initial Submission
 
+# Changes in version 0.8.0 (2022-03-11)
+* Updated 48h time point for `pkdata`
+
 # Changes in version 0.7.0 (2022-03-09)
 * Added a dummy dataset to help with running package examples
   * `catdata` is a dataset with categorical outcomes
 
 # Changes in version 0.6.0 (2021-11-08)
 * Made various improvements to combine all outputs from `qwickr.cont()` as a single level list instead of a multi-level list
+
 
 # Changes in version 0.5.0 (2021-11-02)
 * Added idvar and timevar arguments to `qwickr.cont()` for specifying unique subject ID and time variables. This means users don't have to rename their variables to match the test data in order to use the function.
