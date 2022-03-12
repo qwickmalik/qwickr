@@ -7,6 +7,7 @@
 
 # Changes in version 0.8.0 (2022-03-11)
 * Updated 48h time point for `pkdata`
+* Added `pkssdata` steady-state PK dummy data
 
 # Changes in version 0.7.0 (2022-03-09)
 * Added a dummy dataset to help with running package examples
