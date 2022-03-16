@@ -5,6 +5,10 @@
 ## Initial CRAN Submission
 * **CRAN** Initial Submission
 
+# Changes in version 0.9.0 (2022-03-15)
+* Updated `rmdata` dataset to include a binary outcome (KNEE_PAIN) and a non-normally distributed outcome "WALK_GAIT"
+
+
 # Changes in version 0.8.0 (2022-03-11)
 * Updated 48h time point for `pkdata`
 * Added `pkssdata` steady-state PK dummy data
